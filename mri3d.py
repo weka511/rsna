@@ -141,38 +141,33 @@ def plot_orbit(study,path='./'):
     ax        = axes(projection='3d')
 
     for series in study.get_series():
-        xs = []
-        ys = []
-        zs = []
-        s  = []
+        orbit = []
+        sizes = []
         for dcim in series.dcmread():
-            xs.append(dcim.ImagePositionPatient[0] )
-            ys.append(dcim.ImagePositionPatient[1] )
-            zs.append(dcim.ImagePositionPatient[2] )
-            s.append(10 if dcim.pixel_array.sum()> 0 else 1)
-        ax.scatter(xs,ys,zs,
+            orbit.append(dcim.ImagePositionPatient)
+            sizes.append(10 if dcim.pixel_array.sum()> 0 else 1)
+        ax.scatter(*[[float(a) for a in p] for p in list(zip(*orbit))],
                    label = f'{dcim.SeriesDescription}: {dcim.PatientPosition} {series.get_image_plane(dcim.ImageOrientationPatient)}',
-                   s     = s)
+                   s     = sizes)
+
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
-
     title(dcim.PatientID)
     ax.legend()
     savefig(join(path,dcim.PatientID))
     return fig
 
 if __name__=='__main__':
-
     parser = ArgumentParser('Determine trajectories for all studies')
-    parser.add_argument('--path',   default = r'D:\data\rsna')
-    parser.add_argument('--output', default = 'unique.csv')
-    parser.add_argument('--figs',   default = './figs')
-    parser.add_argument('--show',   default = False, action = 'store_true')
+    parser.add_argument('--path',   default = r'D:\data\rsna',              help = 'Path for data')
+    parser.add_argument('--unique', default = 'unique.csv',                 help = 'File name for list of studies whose planes are identical')
+    parser.add_argument('--figs',   default = './figs',                     help = 'Path to store plots')
+    parser.add_argument('--show',   default = False, action = 'store_true', help = 'Set if plots are to be displayed')
     args = parser.parse_args()
 
     training = Labelled_MRI_Dataset(args.path,'train')
-    with open(args.output,'w') as out:
+    with open(args.unique,'w') as out:
         for study in training.get_studies():
             image_planes = study.get_image_planes()
             if len(set(image_planes))==1:

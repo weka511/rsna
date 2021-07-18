@@ -4,5 +4,5 @@
 
 File|Description
 ------------|---------------------------------------------------------------------------------------------------------------
-mri3d.py|
-rsna.wpr|
+mri3d.py|Determine trajectories for all studies
+rsna.wpr|Project file for WingIDE
