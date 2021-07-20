@@ -204,7 +204,7 @@ def plot_series(series,
         nrows +=1
     fig,axs   = subplots(nrows   = nrows,
                          ncols   = ncols,
-                         figsize = (20,20*nrows))
+                         figsize = (20,20))
     i = 0
     j = 0
     for k,dcim in enumerate(series.dcmread()):
@@ -225,7 +225,7 @@ def plot_series(series,
             axs[i][j].spines['bottom'].set_visible(False)
             axs[i][j].spines['left'].set_visible(False)
     suptitle(f'{study} {SeriesDescription}: {series.get_image_plane(ImageOrientationPatient)}')
-    # savefig(join(path,f'{study}-{SeriesDescription}-{series.get_image_plane(ImageOrientationPatient)}'))
+    savefig(join(path,f'{study}-{SeriesDescription}-{series.get_image_plane(ImageOrientationPatient)}'))
     return fig
 
 if __name__=='__main__':
