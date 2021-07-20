@@ -15,6 +15,7 @@ class Study:
     #
     # Each Study comprises several (in practic 4) Series
     class Series:
+
         def __init__(self,name):
             self.name             = name
             self.missing_images   = set()
@@ -56,7 +57,7 @@ class Study:
 
         # get_image_plane
         #
-        # Snarfed from https://www.kaggle.com/davidbroberts/determining-mr-image-planes
+        # Snarfed from David Roberts -- https://www.kaggle.com/davidbroberts/determining-mr-image-planes
         def get_image_plane(self,loc):
             row_x = round(loc[0])
             row_y = round(loc[1])
@@ -84,6 +85,26 @@ class Study:
             for i in range(1,self.N+1):
                 if i not in self.missing_images:
                     yield join(self.dirpath,f'Image-{i}.dcm')
+
+        # get_values_from_meta
+        #
+        # Convert meta data (list of tuples of ASCII data) to a list of data
+        # sequences, each being the time series for one datum
+
+        def get_values_from_meta(self,orbit):
+            return [[float(a) for a in p] for p in list(zip(*orbit))]
+
+        # get_orbit
+        #
+        # Get trajectory of patient
+
+        def get_orbit(self):
+            orbit   = []
+            trivial = []
+            for dcim in self.dcmread():
+                orbit.append(dcim.ImagePositionPatient)
+                trivial.append(dcim.pixel_array.sum()==0)
+            return self.get_values_from_meta(orbit),trivial,dcim.SeriesDescription, dcim.PatientPosition, dcim.ImageOrientationPatient
 
     def __init__(self,name,path):
         self.series        = None
@@ -118,9 +139,20 @@ class MRI_Dataset:
     def __init__(self,path,folder):
         self.studies = {name:Study(name,join(path,folder,name)) for name in listdir(join(path,folder))}
 
-    def get_studies(self):
-        for study in self.studies.values():
-            yield study
+    # get_studies
+    #
+    # A generator to iterate through studies
+    #
+    # Parameters:
+    #     study_names     Specified list of studies (or empty for all studies in dataset)
+
+    def get_studies(self, study_names = []):
+        if len(study_names)==0:
+            for study in self.studies.values():
+                yield study
+        else:
+            for study_name in study_names:
+                yield self.studies[study_name]
 
 # Labelled_MRI_Dataset
 #
@@ -132,6 +164,8 @@ class Labelled_MRI_Dataset(MRI_Dataset):
         super().__init__(path,folder)
         self.labels = read_csv(join(path,labels),dtype={'BraTS21ID':str})
 
+
+
 # plot_orbit
 #
 # Show how the patient moves through the MRI instrument during one Study
@@ -141,21 +175,17 @@ def plot_orbit(study,path='./'):
     ax        = axes(projection='3d')
 
     for series in study.get_series():
-        orbit = []
-        sizes = []
-        for dcim in series.dcmread():
-            orbit.append(dcim.ImagePositionPatient)
-            sizes.append(10 if dcim.pixel_array.sum()> 0 else 1)
-        ax.scatter(*[[float(a) for a in p] for p in list(zip(*orbit))],
-                   label = f'{dcim.SeriesDescription}: {dcim.PatientPosition} {series.get_image_plane(dcim.ImageOrientationPatient)}',
-                   s     = sizes)
+        orbit, trivial, SeriesDescription, PatientPosition, ImageOrientationPatient = series.get_orbit()
+        ax.scatter(*orbit,
+                   label = f'{SeriesDescription}: {PatientPosition} {series.get_image_plane(ImageOrientationPatient)}',
+                   s     = [1 if t else 10  for t in trivial])
 
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
-    title(dcim.PatientID)
+    title(series.description)
     ax.legend()
-    savefig(join(path,dcim.PatientID))
+    savefig(join(path,series.description))
     return fig
 
 if __name__=='__main__':
@@ -164,11 +194,12 @@ if __name__=='__main__':
     parser.add_argument('--unique', default = 'unique.csv',                 help = 'File name for list of studies whose planes are identical')
     parser.add_argument('--figs',   default = './figs',                     help = 'Path to store plots')
     parser.add_argument('--show',   default = False, action = 'store_true', help = 'Set if plots are to be displayed')
+    parser.add_argument('--studies',                 nargs = '*',           help = 'Names of Studies to be processed (omit to process all)' )
     args = parser.parse_args()
 
     training = Labelled_MRI_Dataset(args.path,'train')
     with open(args.unique,'w') as out:
-        for study in training.get_studies():
+        for study in training.get_studies(study_names = args.studies):
             image_planes = study.get_image_planes()
             if len(set(image_planes))==1:
                 print (study, image_planes[0])
