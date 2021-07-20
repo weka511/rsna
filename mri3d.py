@@ -1,5 +1,5 @@
 from argparse          import ArgumentParser
-from matplotlib.pyplot import axes, close, cm, figure, savefig, show, title
+from matplotlib.pyplot import axes, close, cm, figure, savefig, show, subplots, suptitle, title
 from pydicom           import dcmread
 from os                import sep, listdir, walk
 from os.path           import join, normpath
@@ -90,8 +90,8 @@ class Study:
         #
         # Convert meta data (list of tuples of ASCII data) to a list of data
         # sequences, each being the time series for one datum
-
-        def get_values_from_meta(self,orbit):
+        @staticmethod
+        def get_values_from_meta(orbit):
             return [[float(a) for a in p] for p in list(zip(*orbit))]
 
         # get_orbit
@@ -121,12 +121,14 @@ class Study:
         for name in ['FLAIR', 'T1w', 'T1wCE', 'T2w']:
             yield self.series[name]
 
+    @staticmethod
+    def get_image_plane(series):
+        path_name   = next(series.image_files())
+        dcim        = dcmread(path_name,stop_before_pixels=True)
+        return  series.get_image_plane(dcim.ImageOrientationPatient)
+
     def get_image_planes(self):
-        def get_image_plane(series):
-            path_name   = next(series.image_files())
-            dcim        = dcmread(path_name,stop_before_pixels=True)
-            return  series.get_image_plane(dcim.ImageOrientationPatient)
-        return [get_image_plane(series)  for series in self.series.values()]
+        return [self.get_image_plane(series)  for series in self.series.values()]
 
     def __str__(self):
         return self.name
@@ -170,7 +172,9 @@ class Labelled_MRI_Dataset(MRI_Dataset):
 #
 # Show how the patient moves through the MRI instrument during one Study
 
-def plot_orbit(study,path='./'):
+def plot_orbit(study,
+               path   = './',
+               weight = 10):
     fig       = figure(figsize=(20,20))
     ax        = axes(projection='3d')
 
@@ -178,7 +182,7 @@ def plot_orbit(study,path='./'):
         orbit, trivial, SeriesDescription, PatientPosition, ImageOrientationPatient = series.get_orbit()
         ax.scatter(*orbit,
                    label = f'{SeriesDescription}: {PatientPosition} {series.get_image_plane(ImageOrientationPatient)}',
-                   s     = [1 if t else 10  for t in trivial])
+                   s     = [1 if t else weight for t in trivial])
 
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
@@ -186,6 +190,42 @@ def plot_orbit(study,path='./'):
     title(series.description)
     ax.legend()
     savefig(join(path,series.description))
+    return fig
+
+def plot_series(series,
+               path   = './',
+               study  = '',
+               ncols  = 6,
+               cmap   = cm.viridis):
+    _, trivial, SeriesDescription, _, ImageOrientationPatient = series.get_orbit()
+    N         = sum([0 if t else 1 for t in trivial])
+    nrows     = N // ncols
+    while nrows*ncols<N:
+        nrows +=1
+    fig,axs   = subplots(nrows   = nrows,
+                         ncols   = ncols,
+                         figsize = (20,20*nrows))
+    i = 0
+    j = 0
+    for k,dcim in enumerate(series.dcmread()):
+        if trivial[k]: continue
+        axs[i][j].imshow(dcim.pixel_array,
+                         cmap = cmap)
+        j +=1
+        if j==ncols:
+            j = 0
+            i+= 1
+    for i in range(nrows):
+        for j in range(ncols):
+            axs[i][j].axes.xaxis.set_visible(False)
+            axs[i][j].axes.yaxis.set_visible(False)
+            axs[i][j].axis('tight')
+            axs[i][j].spines['top'].set_visible(False)
+            axs[i][j].spines['right'].set_visible(False)
+            axs[i][j].spines['bottom'].set_visible(False)
+            axs[i][j].spines['left'].set_visible(False)
+    suptitle(f'{study} {SeriesDescription}: {series.get_image_plane(ImageOrientationPatient)}')
+    # savefig(join(path,f'{study}-{SeriesDescription}-{series.get_image_plane(ImageOrientationPatient)}'))
     return fig
 
 if __name__=='__main__':
@@ -204,9 +244,15 @@ if __name__=='__main__':
             if len(set(image_planes))==1:
                 print (study, image_planes[0])
                 out.write(f'{study}, {image_planes[0]}\n')
-                fig = plot_orbit(study, path=args.figs)
+                fig = plot_orbit(study,
+                                 path = args.figs)
                 if not args.show:
                     close(fig)
-
+                for series in study.get_series():
+                    fig = plot_series(series,
+                                      study = study,
+                                      path  = args.figs)
+                    if not args.show:
+                        close(fig)
     if args.show:
         show()
