@@ -166,7 +166,20 @@ class Labelled_MRI_Dataset(MRI_Dataset):
         super().__init__(path,folder)
         self.labels = read_csv(join(path,labels),dtype={'BraTS21ID':str})
 
+    # get_counts
+    #
+    # Get number of negative and positive labels
 
+    def get_counts(self):
+        ones = sum(max(0,label) for label in self.labels['MGMT_value'])
+        return len(self.labels) - ones, ones
+
+    # __getitem__
+    #
+    # Get value of label
+
+    def __getitem__(self, key):
+        return int(self.labels[self.labels.BraTS21ID==key].MGMT_value)
 
 # plot_orbit
 #
@@ -238,6 +251,7 @@ if __name__=='__main__':
     args = parser.parse_args()
 
     training = Labelled_MRI_Dataset(args.path,'train')
+
     with open(args.unique,'w') as out:
         for study in training.get_studies(study_names = args.studies):
             image_planes = study.get_image_planes()
