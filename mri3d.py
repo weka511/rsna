@@ -1,5 +1,5 @@
 from argparse          import ArgumentParser
-from matplotlib.pyplot import axes, close, cm, figure, savefig, show, subplots, suptitle, title
+from matplotlib.pyplot import axes, close, cm, figure, get_cmap, savefig, show, subplots, suptitle, title
 from pydicom           import dcmread
 from os                import sep, listdir, walk
 from os.path           import join, normpath
@@ -222,7 +222,7 @@ def hide_decorations(nrows,ncols,axs):
 
 # create_cells
 #
-# A generator for uterating through cells, left to right, then start next row
+# A generator for iterating through cells, left to right, then start next row
 
 def create_cells(ncols,axs):
     i = 0
@@ -234,11 +234,15 @@ def create_cells(ncols,axs):
             j = 0
             i+= 1
 
+# plot_series
+#
+# Plot an entire series of images
+
 def plot_series(series,
                path   = './',
                study  = '',
                ncols  = 6,
-               cmap   = cm.viridis,
+               cmap   = get_cmap('coolwarm'),
                width  = 20,
                height = 20):
 
@@ -266,6 +270,7 @@ if __name__=='__main__':
     parser.add_argument('--figs',   default = './figs',                     help = 'Path to store plots')
     parser.add_argument('--show',   default = False, action = 'store_true', help = 'Set if plots are to be displayed')
     parser.add_argument('--studies',                 nargs = '*',           help = 'Names of Studies to be processed (omit to process all)' )
+    parser.add_argument('--cmap',   default = 'gray',                       help = 'Colour map for displaying greyscale images')
     args = parser.parse_args()
 
     training = Labelled_MRI_Dataset(args.path,'train')
@@ -283,7 +288,8 @@ if __name__=='__main__':
                 for series in study.get_series():
                     fig = plot_series(series,
                                       study = study,
-                                      path  = args.figs)
+                                      path  = args.figs,
+                                      cmap  = args.cmap)
                     if not args.show:
                         close(fig)
     if args.show:
