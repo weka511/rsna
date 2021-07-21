@@ -77,11 +77,11 @@ class Study:
         def __len__(self):
             return self.N
 
-        # image_files
+        # slice_files
         #
         # Generator for iterating through image files
 
-        def image_files(self):
+        def slice_files(self):
             for i in range(1,self.N+1):
                 if i not in self.missing_images:
                     yield join(self.dirpath,f'Image-{i}.dcm')
@@ -123,7 +123,7 @@ class Study:
 
     @staticmethod
     def get_image_plane(series):
-        path_name   = next(series.image_files())
+        path_name   = next(series.slice_files())
         dcim        = dcmread(path_name,stop_before_pixels=True)
         return  series.get_image_plane(dcim.ImageOrientationPatient)
 
@@ -205,29 +205,11 @@ def plot_orbit(study,
     savefig(join(path,series.description))
     return fig
 
-def plot_series(series,
-               path   = './',
-               study  = '',
-               ncols  = 6,
-               cmap   = cm.viridis):
-    _, trivial, SeriesDescription, _, ImageOrientationPatient = series.get_orbit()
-    N         = sum([0 if t else 1 for t in trivial])
-    nrows     = N // ncols
-    while nrows*ncols<N:
-        nrows +=1
-    fig,axs   = subplots(nrows   = nrows,
-                         ncols   = ncols,
-                         figsize = (20,20))
-    i = 0
-    j = 0
-    for k,dcim in enumerate(series.dcmread()):
-        if trivial[k]: continue
-        axs[i][j].imshow(dcim.pixel_array,
-                         cmap = cmap)
-        j +=1
-        if j==ncols:
-            j = 0
-            i+= 1
+# hide_decorations
+#
+# Used to declutter plots
+
+def hide_decorations(nrows,ncols,axs):
     for i in range(nrows):
         for j in range(ncols):
             axs[i][j].axes.xaxis.set_visible(False)
@@ -237,6 +219,42 @@ def plot_series(series,
             axs[i][j].spines['right'].set_visible(False)
             axs[i][j].spines['bottom'].set_visible(False)
             axs[i][j].spines['left'].set_visible(False)
+
+# create_cells
+#
+# A generator for uterating through cells, left to right, then start next row
+
+def create_cells(ncols,axs):
+    i = 0
+    j = 0
+    while True:
+        yield axs[i,j]
+        j +=1
+        if j==ncols:
+            j = 0
+            i+= 1
+
+def plot_series(series,
+               path   = './',
+               study  = '',
+               ncols  = 6,
+               cmap   = cm.viridis,
+               width  = 20,
+               height = 20):
+
+    _, trivial, SeriesDescription, _, ImageOrientationPatient = series.get_orbit()
+    non_trivial_slices                                        = sum([0 if t else 1 for t in trivial])
+    nrows                                                     = non_trivial_slices // ncols
+    while nrows*ncols < non_trivial_slices: nrows +=1
+
+    fig,axs   = subplots(nrows = nrows, ncols = ncols, figsize = (width,height))
+    cell      = create_cells(ncols,axs)
+
+    for k,dcim in enumerate(series.dcmread()):
+        if not trivial[k]:
+            next(cell).imshow(dcim.pixel_array,cmap = cmap)
+
+    hide_decorations(nrows,ncols,axs)
     suptitle(f'{study} {SeriesDescription}: {series.get_image_plane(ImageOrientationPatient)}')
     savefig(join(path,f'{study}-{SeriesDescription}-{series.get_image_plane(ImageOrientationPatient)}'))
     return fig
