@@ -39,24 +39,27 @@ def onselect_series(evt):
 fig = Figure(figsize=(5, 4), dpi=100)
 ax=fig.add_subplot(111)
 def onselect_slice(evt):
-    global slice_path, fig
+    global slice_path, fig, canvas
     widget     = evt.widget
     selection  = widget.curselection()
     if selection:
-        if fig!=None:
-            close(fig)
+        try: # https://stackoverflow.com/questions/56154065/using-tkinter-how-to-clear-figurecanvastkagg-object-if-exists-or-similar
+            canvas.get_tk_widget().pack_forget()
+        except AttributeError:
+            pass
         index        = int(selection[0])
         slice_number = widget.get(index)
         slice_path   = join(series.dirpath,f'Image-{slice_number}.dcm')
         print (f'Study: {study}, Series: {series}, Slice: {slice_number} -- {slice_path}')
         dcim = dcmread(slice_path)
-        fig = Figure(figsize=(5, 4), dpi=100)
-        fig.add_subplot(111).imshow(dcim.pixel_array)#plot(t, 2 * np.sin(2 * np.pi * t))
+        if fig!=None:
+            close(fig)
+        fig  = Figure(figsize=(5, 4), dpi=100)
+        fig.add_subplot(111).imshow(dcim.pixel_array)
 
-        canvas = FigureCanvasTkAgg(fig, master=bottomframe)  # A tk.DrawingArea.
+        canvas = FigureCanvasTkAgg(fig, master=bottomframe)
         canvas.draw()
         canvas.get_tk_widget().pack(side=TOP, fill=BOTH, expand=1)
-        # imshow(dcim.pixel_array)
 
 if __name__=='__main__':
     training = Labelled_MRI_Dataset(r'D:\data\rsna','train')
