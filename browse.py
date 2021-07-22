@@ -5,7 +5,7 @@ from matplotlib.pyplot                 import close, imshow, show
 from mri3d                             import Labelled_MRI_Dataset
 from os.path                           import join
 from pydicom                           import dcmread
-from tkinter                           import Frame, Tk,Listbox, Scrollbar, TOP, BOTH, BOTTOM, LEFT
+from tkinter                           import BOTH, BOTTOM, END, Frame, LEFT, Listbox, Scrollbar, Tk, TOP
 
 study      = None
 series     = None
@@ -23,8 +23,8 @@ def onselect_studies(evt):
         print (f'Study: {study.name}')
         LB_series.delete(0,'end')
         LB_slices.delete(0,'end')
-        for i,series in enumerate(study.get_series()):
-            LB_series.insert(i,series.description)
+        for series in study.get_series():
+            LB_series.insert(END,series.description)
 
 def onselect_series(evt):
     global series
@@ -36,8 +36,8 @@ def onselect_series(evt):
         series = study[key]
         print (f'Study: {study.name}, Series: {series.description}')
         LB_slices.delete(0,'end')
-        for i,slice in enumerate(series.seqs):
-            LB_slices.insert(i,slice)
+        for slice in series.seqs:
+            LB_slices.insert(END,slice)
 
 def onselect_slice(evt):
     global slice_path, canvas
@@ -61,32 +61,47 @@ def onselect_slice(evt):
         canvas.get_tk_widget().pack(side=TOP, fill=BOTH, expand=1)
 
 if __name__=='__main__':
-    training = Labelled_MRI_Dataset(r'D:\data\rsna','train')
-
     root = Tk()
     root.title('Browse MIR images')
     root.geometry('1200x720+300+300')
     root.resizable(True, True)
-    frame = Frame(root,height=50)
-    frame.pack()
-    bottomframe = Frame(root, height=100)
-    bottomframe.pack( side = BOTTOM )
-    scrollbar = Scrollbar(frame)
-    scrollbar.pack(side = LEFT, fill = BOTH)
-    LB_studies = Listbox(frame, bg='#90e4c1')
-    LB_series  = Listbox(frame, bg='#90e4c1')
-    LB_slices  = Listbox(frame, bg='#90e4c1')
-    LB_studies.pack( side = LEFT)
-    LB_series.pack( side = LEFT)
-    LB_slices.pack( side = LEFT)
 
-    LB_studies.config(yscrollcommand = scrollbar.set)
-    scrollbar.config(command = LB_studies.yview)
+ #  Build UI elements
+
+    frame           = Frame(root,height=50)
+    bottomframe     = Frame(root, height=100)
+    scrollbar_left  = Scrollbar(frame)
+    LB_studies      = Listbox(frame, bg='#90e4c1')
+    LB_series       = Listbox(frame, bg='#90e4c1')
+    LB_slices       = Listbox(frame, bg='#029386')
+    scrollbar_right = Scrollbar(frame, bg='#029386')
+
+#   pack...
+
+    frame.pack()
+    bottomframe.pack(side = BOTTOM )
+    scrollbar_left.pack(side = LEFT, fill = BOTH)
+    LB_studies.pack(side = LEFT)
+    LB_series.pack(side = LEFT)
+    LB_slices.pack(side = LEFT)
+    scrollbar_right.pack(side = LEFT, fill = BOTH)
+
+#   Wire up scrollbars
+
+    LB_studies.config(yscrollcommand = scrollbar_left.set)
+    scrollbar_left.config(command = LB_studies.yview)
+    LB_slices.config(yscrollcommand = scrollbar_right.set)
+    scrollbar_right.config(command = LB_slices.yview)
+
+#   Bind event handlers
+
     LB_studies.bind('<<ListboxSelect>>', onselect_studies)
     LB_series.bind('<<ListboxSelect>>',  onselect_series)
     LB_slices.bind('<<ListboxSelect>>',  onselect_slice)
 
-    for i,study in enumerate(training.get_studies()):
-        LB_studies.insert(i, study)
+    training = Labelled_MRI_Dataset(r'D:\data\rsna','train')
+
+    for study in training.get_studies():
+        LB_studies.insert(END, study)
 
     root.mainloop()
