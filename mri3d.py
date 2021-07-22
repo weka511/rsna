@@ -6,11 +6,14 @@ from os.path           import join, normpath
 from pandas            import read_csv
 from re                import match
 
+# http://www.aboutcancer.com/mri_gbm.htm
+
 # Study
 #
 # This class represents a study for one patient
 #
 class Study:
+
     # Series
     #
     # Each Study comprises several (in practic 4) Series
@@ -23,7 +26,7 @@ class Study:
             self.image_plane      = None
             self.description      = None
             self.patient_position = None
-
+            self.slices           = []
         # add_images
         #
         # Add a collection of images to Series
@@ -35,9 +38,9 @@ class Study:
                     return int(m.group(1))
 
             self.dirpath          = dirpath
-            seqs                  = sorted([extract_digits(name) for name in filenames])
-            self.N                = seqs[-1]
-            self.missing_images   = set([i for i in range(1,self.N) if i not in seqs])
+            self.seqs             = sorted([extract_digits(name) for name in filenames])
+            self.N                = self.seqs[-1]
+            self.missing_images   = set([i for i in range(1,self.N) if i not in self.seqs])
             dcim                  = dcmread(join(dirpath,filenames[0]))
             self.image_plane      = self.get_image_plane(dcim.ImageOrientationPatient)
             self.description      = dcim.SeriesDescription
@@ -99,12 +102,14 @@ class Study:
         # Get trajectory of patient
 
         def get_orbit(self):
-            orbit   = []
-            trivial = []
+            orbit     = []
+            trivial   = []
+            brightest = 1
             for dcim in self.dcmread():
                 orbit.append(dcim.ImagePositionPatient)
                 trivial.append(dcim.pixel_array.sum()==0)
-            return self.get_values_from_meta(orbit),trivial,dcim.SeriesDescription, dcim.PatientPosition, dcim.ImageOrientationPatient
+                brightest = max(brightest,dcim.pixel_array.max())
+            return self.get_values_from_meta(orbit),trivial,dcim.SeriesDescription, dcim.PatientPosition, dcim.ImageOrientationPatient,brightest
 
     def __init__(self,name,path):
         self.series        = None
@@ -133,6 +138,9 @@ class Study:
     def __str__(self):
         return self.name
 
+    def __getitem__(self, key):
+        return self.series[key]
+
 # MRI_Dataset
 #
 # An MRI Dataset comprises sevral stidies, either test or training
@@ -140,6 +148,13 @@ class Study:
 class MRI_Dataset:
     def __init__(self,path,folder):
         self.studies = {name:Study(name,join(path,folder,name)) for name in listdir(join(path,folder))}
+
+    # __getitem__
+    #
+    # Get value of label
+
+    def __getitem__(self, key):
+        return self.studies[key]
 
     # get_studies
     #
@@ -178,7 +193,7 @@ class Labelled_MRI_Dataset(MRI_Dataset):
     #
     # Get value of label
 
-    def __getitem__(self, key):
+    def get_label(self, key):
         return int(self.labels[self.labels.BraTS21ID==key].MGMT_value)
 
 # plot_orbit
@@ -192,7 +207,7 @@ def plot_orbit(study,
     ax        = axes(projection='3d')
 
     for series in study.get_series():
-        orbit, trivial, SeriesDescription, PatientPosition, ImageOrientationPatient = series.get_orbit()
+        orbit, trivial, SeriesDescription, PatientPosition, ImageOrientationPatient,_ = series.get_orbit()
         ax.scatter(*orbit,
                    label = f'{SeriesDescription}: {PatientPosition} {series.get_image_plane(ImageOrientationPatient)}',
                    s     = [1 if t else weight for t in trivial])
@@ -200,9 +215,9 @@ def plot_orbit(study,
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
-    title(series.description)
+    title(f'{study}')
     ax.legend()
-    savefig(join(path,series.description))
+    savefig(join(path,f'{study}'))
     return fig
 
 # hide_decorations
@@ -246,17 +261,21 @@ def plot_series(series,
                width  = 20,
                height = 20):
 
-    _, trivial, SeriesDescription, _, ImageOrientationPatient = series.get_orbit()
+    _, trivial, SeriesDescription, _, ImageOrientationPatient,brightest = series.get_orbit()
     non_trivial_slices                                        = sum([0 if t else 1 for t in trivial])
-    nrows                                                     = non_trivial_slices // ncols
+    nrows                                                     = max(2,non_trivial_slices // ncols)
     while nrows*ncols < non_trivial_slices: nrows +=1
 
     fig,axs   = subplots(nrows = nrows, ncols = ncols, figsize = (width,height))
     cell      = create_cells(ncols,axs)
 
+    # for k,dcim in enumerate(series.dcmread()):
+        # if not trivial[k]:
+            # mm = dcim.pixel_array.max()
+            # x=0
     for k,dcim in enumerate(series.dcmread()):
         if not trivial[k]:
-            next(cell).imshow(dcim.pixel_array,cmap = cmap)
+            next(cell).imshow(dcim.pixel_array/brightest,cmap = cmap)
 
     hide_decorations(nrows,ncols,axs)
     suptitle(f'{study} {SeriesDescription}: {series.get_image_plane(ImageOrientationPatient)}')
@@ -265,12 +284,12 @@ def plot_series(series,
 
 if __name__=='__main__':
     parser = ArgumentParser('Determine trajectories for all studies')
-    parser.add_argument('--path',   default = r'D:\data\rsna',              help = 'Path for data')
-    parser.add_argument('--unique', default = 'unique.csv',                 help = 'File name for list of studies whose planes are identical')
-    parser.add_argument('--figs',   default = './figs',                     help = 'Path to store plots')
-    parser.add_argument('--show',   default = False, action = 'store_true', help = 'Set if plots are to be displayed')
-    parser.add_argument('--studies',                 nargs = '*',           help = 'Names of Studies to be processed (omit to process all)' )
-    parser.add_argument('--cmap',   default = 'gray',                       help = 'Colour map for displaying greyscale images')
+    parser.add_argument('--path',    default = r'D:\data\rsna',              help = 'Path for data')
+    parser.add_argument('--unique',  default = 'unique.csv',                 help = 'File name for list of studies whose planes are identical')
+    parser.add_argument('--figs',    default = './figs',                     help = 'Path to store plots')
+    parser.add_argument('--show',    default = False, action = 'store_true', help = 'Set if plots are to be displayed')
+    parser.add_argument('--studies', default = [],    nargs = '*',           help = 'Names of Studies to be processed (omit to process all)' )
+    parser.add_argument('--cmap',    default = 'gray',                       help = 'Colour map for displaying greyscale images')
     args = parser.parse_args()
 
     training = Labelled_MRI_Dataset(args.path,'train')
