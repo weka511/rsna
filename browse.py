@@ -1,15 +1,17 @@
-from tkinter                           import Frame, Tk,Listbox, TOP, BOTH, BOTTOM, LEFT
+
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
+from matplotlib.figure                 import Figure
+from matplotlib.pyplot                 import close, imshow, show
 from mri3d                             import Labelled_MRI_Dataset
 from os.path                           import join
-from matplotlib.figure import Figure
-import numpy as np
-from pydicom           import dcmread
-from matplotlib.pyplot import close, imshow, show
+from pydicom                           import dcmread
+from tkinter                           import Frame, Tk,Listbox, Scrollbar, TOP, BOTH, BOTTOM, LEFT
+
 study      = None
 series     = None
 slice_path = None
-canvas = None
+canvas     = None
+
 def onselect_studies(evt):
     global study
     widget = evt.widget
@@ -36,10 +38,9 @@ def onselect_series(evt):
         LB_slices.delete(0,'end')
         for i,slice in enumerate(series.seqs):
             LB_slices.insert(i,slice)
-fig = Figure(figsize=(5, 4), dpi=100)
-ax=fig.add_subplot(111)
+
 def onselect_slice(evt):
-    global slice_path, fig, canvas
+    global slice_path, canvas
     widget     = evt.widget
     selection  = widget.curselection()
     if selection:
@@ -52,9 +53,7 @@ def onselect_slice(evt):
         slice_path   = join(series.dirpath,f'Image-{slice_number}.dcm')
         print (f'Study: {study}, Series: {series}, Slice: {slice_number} -- {slice_path}')
         dcim = dcmread(slice_path)
-        if fig!=None:
-            close(fig)
-        fig  = Figure(figsize=(5, 4), dpi=100)
+        fig  = Figure(figsize=(10, 10), dpi=100)
         fig.add_subplot(111).imshow(dcim.pixel_array)
 
         canvas = FigureCanvasTkAgg(fig, master=bottomframe)
@@ -64,34 +63,30 @@ def onselect_slice(evt):
 if __name__=='__main__':
     training = Labelled_MRI_Dataset(r'D:\data\rsna','train')
 
-    top = Tk()
-    top.title('Layout Test')
-    top.geometry('1200x720+300+300')
-    top.resizable(True, True)
-    frame = Frame(top)
+    root = Tk()
+    root.title('Browse MIR images')
+    root.geometry('1200x720+300+300')
+    root.resizable(True, True)
+    frame = Frame(root,height=50)
     frame.pack()
-    bottomframe = Frame(top)
+    bottomframe = Frame(root, height=100)
     bottomframe.pack( side = BOTTOM )
-    LB_studies = Listbox(frame)
-    LB_series  = Listbox(frame)
-    LB_slices  = Listbox(frame)
+    scrollbar = Scrollbar(frame)
+    scrollbar.pack(side = LEFT, fill = BOTH)
+    LB_studies = Listbox(frame, bg='#90e4c1')
+    LB_series  = Listbox(frame, bg='#90e4c1')
+    LB_slices  = Listbox(frame, bg='#90e4c1')
     LB_studies.pack( side = LEFT)
     LB_series.pack( side = LEFT)
     LB_slices.pack( side = LEFT)
 
+    LB_studies.config(yscrollcommand = scrollbar.set)
+    scrollbar.config(command = LB_studies.yview)
     LB_studies.bind('<<ListboxSelect>>', onselect_studies)
     LB_series.bind('<<ListboxSelect>>',  onselect_series)
     LB_slices.bind('<<ListboxSelect>>',  onselect_slice)
 
-    # t = np.arange(0, 3, .01)
-    # fig = Figure(figsize=(5, 4), dpi=100)
-    # fig.add_subplot(111).plot(t, 2 * np.sin(2 * np.pi * t))
-
-    # canvas = FigureCanvasTkAgg(fig, master=bottomframe)  # A tk.DrawingArea.
-    # canvas.draw()
-    # canvas.get_tk_widget().pack(side=TOP, fill=BOTH, expand=1)
-
     for i,study in enumerate(training.get_studies()):
         LB_studies.insert(i, study)
 
-    top.mainloop()
+    root.mainloop()

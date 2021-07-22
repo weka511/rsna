@@ -4,5 +4,6 @@
 
 File|Description
 ------------|---------------------------------------------------------------------------------------------------------------
+browse.py|Inspect individual images
 mri3d.py|Determine trajectories for all studies
 rsna.wpr|Project file for WingIDE
