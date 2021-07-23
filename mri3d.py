@@ -27,6 +27,10 @@ class Study:
             self.description      = None
             self.patient_position = None
             self.slices           = []
+
+        def __str__(self):
+            return self.description
+
         # add_images
         #
         # Add a collection of images to Series
@@ -57,6 +61,9 @@ class Study:
             for i in range(1,len(self)+1):
                 if i not in self.missing_images:
                     yield  dcmread(join(self.dirpath,f'Image-{i}.dcm'), stop_before_pixels = stop_before_pixels)
+
+        def __getitem__(self,i):
+            return  dcmread(join(self.dirpath,f'Image-{i}.dcm'))
 
         # get_image_plane
         #
@@ -269,10 +276,6 @@ def plot_series(series,
     fig,axs   = subplots(nrows = nrows, ncols = ncols, figsize = (width,height))
     cell      = create_cells(ncols,axs)
 
-    # for k,dcim in enumerate(series.dcmread()):
-        # if not trivial[k]:
-            # mm = dcim.pixel_array.max()
-            # x=0
     for k,dcim in enumerate(series.dcmread()):
         if not trivial[k]:
             next(cell).imshow(dcim.pixel_array/brightest,cmap = cmap)
