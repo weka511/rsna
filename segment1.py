@@ -10,6 +10,7 @@ from pydicom           import dcmread
 from mri3d             import Study
 from os.path           import join
 
+
 class MRI_Geometry:
     # https://nipy.org/nibabel/dicom/dicom_orientation.html
     @staticmethod
@@ -48,10 +49,14 @@ class MRI_Geometry:
 
 class SimpleSegmenter:
 
-    def __init(self, Threshold = {
-        'FLAIR' : 0.7,
-        'T1wCE' : 0.9,
-        'T2w'   : 0.7}):
+    class Z_score_failed(Exception):
+        pass
+
+    def __init__(self,
+                 Threshold = {
+                     'FLAIR' : 0.7,
+                     'T1wCE' : 0.9,
+                     'T2w'   : 0.7}):
         self.Threshold = {name:threshold for name,threshold in Threshold.items()}
 
     def segment(self,dcims):
@@ -59,17 +64,20 @@ class SimpleSegmenter:
         centre_pixel = MRI_Geometry.create_midpoint(dcims['FLAIR'])
         centre_pos   = matmul(M,centre_pixel)
         for series in study.get_series():
-            if series.name=='FLAIR': continue
-            dcims[series.name] = MRI_Geometry.get_closest(series,centre_pixel,centre_pos)
+            if series.name!='FLAIR':
+                dcims[series.name] = MRI_Geometry.get_closest(series,centre_pixel,centre_pos)
         Z_normalized = {name:self.get_Z_score(dcim.pixel_array) for name,dcim in dcims.items() }
-        thresholded  = {name:self.threshold_pixels(z_norm,threshold=self.Threshold[name]) for name,z_norm in Z_normalized.items() if name in self.Threshold}
-        hadamard      = multiply(thresholded['FLAIR'],thresholded['T2w'])
+        thresholded  = {name:self.threshold_pixels(z_normalized,
+                                                   threshold=self.Threshold[name])          \
+                        for name,z_normalized in Z_normalized.items() if name in self.Threshold}
+        hadamard     = multiply(thresholded['FLAIR'],thresholded['T2w'])
         return Z_normalized, thresholded,hadamard
 
 
     def get_Z_score(self,pixel_array):
         mu    = mean(pixel_array)
         sigma = std(pixel_array)
+        if sigma==0: raise SimpleSegmenter.Z_score_failed
         return (pixel_array - mu)/sigma
 
     def threshold_pixels(self,pixel_array,threshold=0.7):
@@ -83,19 +91,19 @@ def declutter(ax,spines=['top','right','bottom', 'left']):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--study')
+    parser.add_argument('--study',   default = '00098')
     parser.add_argument('--path',    default = r'D:\data\rsna',              help = 'Path for data')
     parser.add_argument('--show',    default = False, action = 'store_true', help = 'Set if plots are to be displayed')
-    args=parser.parse_args()
-    study        = Study(args.study,join(args.path,'train',args.study))
+    args      = parser.parse_args()
+    study     = Study(args.study,join(args.path,'train',args.study))
     segmenter = SimpleSegmenter()
     for k in range(1,200):
         try:
-            dcims                              = {f'{series}':series[series.seqs[k]] for series in study.get_series() if series.name=='FLAIR'}
+            dcims = {f'{series}':series[series.seqs[k]] for series in study.get_series() if series.name=='FLAIR'}
+            if dcims['FLAIR'].pixel_array.sum()==0: continue
             Z_normalized, thresholded,hadamard = segmenter.segment(dcims)
 
             fig,axs      = subplots(nrows = 4, ncols = 4, figsize = (20,20))
-
             axs[0,0].set_title('Raw')
             for i,series in enumerate(study.get_series()):
                 axs[i,0].imshow(dcims[f'{series}'].pixel_array,
@@ -131,8 +139,12 @@ if __name__ == '__main__':
             suptitle(f'{study}')
             savefig(f'{study}-{k}')
             close (fig)
+        except SimpleSegmenter.Z_score_failed:
+            print (f'Could not process {k}')
         except IndexError:
             break
+        finally:
+            if k%5==0: print (f'Processed {k}')
 
     if args.show:
         show()
