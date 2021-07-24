@@ -7,7 +7,7 @@ from matplotlib.pyplot import close, cm, savefig, show, subplots, suptitle
 from numpy             import array, mean, multiply, std, ones_like, matmul
 from numpy.linalg      import norm
 from pydicom           import dcmread
-from mri3d             import Study
+from mri3d             import Study, declutter
 from os.path           import join
 
 
@@ -38,8 +38,8 @@ class MRI_Geometry:
         min_distance = float('inf')
         closest_dcim = None
         for dcim in series.dcmread():
-            M1 = MRI_Geometry.create_matrix(dcim)
-            c  = matmul(M1,centre_pixel)
+            M    = MRI_Geometry.create_matrix(dcim)
+            c    = matmul(M,centre_pixel)
             dist = norm(centre_pos - c)
             if dist<min_distance:
                 min_distance = dist
@@ -83,11 +83,7 @@ class SimpleSegmenter:
     def threshold_pixels(self,pixel_array,threshold=0.7):
         return (pixel_array>threshold*pixel_array.max())*ones_like(pixel_array)
 
-def declutter(ax,spines=['top','right','bottom', 'left']):
-    ax.axes.xaxis.set_visible(False)
-    ax.axes.yaxis.set_visible(False)
-    for spine in spines:
-        ax.spines[spine].set_visible(False)
+
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -140,7 +136,7 @@ if __name__ == '__main__':
             savefig(f'{study}-{k}')
             close (fig)
         except SimpleSegmenter.Z_score_failed:
-            print (f'Could not process {k}')
+            print (f'Could not calculate Z-score for {k}')
         except IndexError:
             break
         finally:

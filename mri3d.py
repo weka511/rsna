@@ -229,18 +229,14 @@ def plot_orbit(study,
 
 # hide_decorations
 #
-# Used to declutter plots
+# Remove boxes and other decorations from plot
 
-def hide_decorations(nrows,ncols,axs):
-    for i in range(nrows):
-        for j in range(ncols):
-            axs[i][j].axes.xaxis.set_visible(False)
-            axs[i][j].axes.yaxis.set_visible(False)
-            axs[i][j].axis('tight')
-            axs[i][j].spines['top'].set_visible(False)
-            axs[i][j].spines['right'].set_visible(False)
-            axs[i][j].spines['bottom'].set_visible(False)
-            axs[i][j].spines['left'].set_visible(False)
+def declutter(ax,spines=['top','right','bottom', 'left']):
+    ax.axes.xaxis.set_visible(False)
+    ax.axes.yaxis.set_visible(False)
+    for spine in spines:
+        ax.spines[spine].set_visible(False)
+
 
 # create_cells
 #
@@ -280,7 +276,10 @@ def plot_series(series,
         if not trivial[k]:
             next(cell).imshow(dcim.pixel_array/brightest,cmap = cmap)
 
-    hide_decorations(nrows,ncols,axs)
+    for i in range(nrows):
+        for j in range(ncols):
+            declutter(axs[i][j])
+
     suptitle(f'{study} {SeriesDescription}: {series.get_image_plane(ImageOrientationPatient)}')
     savefig(join(path,f'{study}-{SeriesDescription}-{series.get_image_plane(ImageOrientationPatient)}'))
     return fig
