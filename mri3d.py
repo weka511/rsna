@@ -32,6 +32,32 @@ from re                import match
 
 # http://www.aboutcancer.com/mri_gbm.htm
 
+# ImagePlane
+
+class ImagePlane:
+    names = ['Sagittal','Axial','Coronal' ]
+
+    # get_image_plane
+    #
+    # Snarfed from David Roberts -- https://www.kaggle.com/davidbroberts/determining-mr-image-planes
+    @staticmethod
+    def get(loc):
+        row_x = round(loc[0])
+        row_y = round(loc[1])
+        row_z = round(loc[2])
+        col_x = round(loc[3])
+        col_y = round(loc[4])
+        col_z = round(loc[5])
+
+        if row_x == 1 and row_y == 0 and col_x == 0 and col_y == 0:  return "Coronal"
+
+        if row_x == 0 and row_y == 1 and col_x == 0 and col_y == 0:  return "Sagittal"
+
+        if row_x == 1 and row_y == 0 and col_x == 0 and col_y == 1:  return "Axial"
+
+        return "Unknown"
+
+
 # Study
 #
 # This class represents a study for one patient
@@ -43,6 +69,7 @@ class Study:
     # Each Study comprises several (in practic 4) Series
     class Series:
 
+        Types = ['FLAIR', 'T1w', 'T1wCE', 'T2w']
         def __init__(self,name):
             self.name             = name
             self.missing_images   = set()
@@ -70,7 +97,7 @@ class Study:
             self.N                = self.seqs[-1]
             self.missing_images   = set([i for i in range(1,self.N) if i not in self.seqs])
             dcim                  = dcmread(join(dirpath,filenames[0]))
-            self.image_plane      = self.get_image_plane(dcim.ImageOrientationPatient)
+            self.image_plane      = ImagePlane.get(dcim.ImageOrientationPatient)
             self.description      = dcim.SeriesDescription
             self.patient_position = dcim.PatientPosition
 
@@ -89,24 +116,6 @@ class Study:
         def __getitem__(self,i):
             return  dcmread(join(self.dirpath,f'Image-{i}.dcm'))
 
-        # get_image_plane
-        #
-        # Snarfed from David Roberts -- https://www.kaggle.com/davidbroberts/determining-mr-image-planes
-        def get_image_plane(self,loc):
-            row_x = round(loc[0])
-            row_y = round(loc[1])
-            row_z = round(loc[2])
-            col_x = round(loc[3])
-            col_y = round(loc[4])
-            col_z = round(loc[5])
-
-            if row_x == 1 and row_y == 0 and col_x == 0 and col_y == 0:  return "Coronal"
-
-            if row_x == 0 and row_y == 1 and col_x == 0 and col_y == 0:  return "Sagittal"
-
-            if row_x == 1 and row_y == 0 and col_x == 0 and col_y == 1:  return "Axial"
-
-            return "Unknown"
 
         def __len__(self):
             return self.N
@@ -154,14 +163,14 @@ class Study:
                 series.add_images(dirpath,filenames)
 
     def get_series(self):
-        for name in ['FLAIR', 'T1w', 'T1wCE', 'T2w']:
+        for name in Study.Series.Types:#['FLAIR', 'T1w', 'T1wCE', 'T2w']:
             yield self.series[name]
 
     @staticmethod
     def get_image_plane(series):
         path_name   = next(series.slice_files())
         dcim        = dcmread(path_name,stop_before_pixels=True)
-        return  series.get_image_plane(dcim.ImageOrientationPatient)
+        return  ImagePlane.get(dcim.ImageOrientationPatient)
 
     def get_image_planes(self):
         return [self.get_image_plane(series)  for series in self.series.values()]
@@ -240,7 +249,7 @@ def plot_orbit(study,
     for series in study.get_series():
         orbit, trivial, SeriesDescription, PatientPosition, ImageOrientationPatient,_ = series.get_orbit()
         ax.scatter(*orbit,
-                   label = f'{SeriesDescription}: {PatientPosition} {series.get_image_plane(ImageOrientationPatient)}',
+                   label = f'{SeriesDescription}: {PatientPosition} {ImagePlane.get(ImageOrientationPatient)}',
                    s     = [1 if t else weight for t in trivial])
 
     ax.set_xlabel('X')
@@ -304,8 +313,8 @@ def plot_series(series,
         for j in range(ncols):
             declutter(axs[i][j])
 
-    suptitle(f'{study} {SeriesDescription}: {series.get_image_plane(ImageOrientationPatient)}')
-    savefig(join(path,f'{study}-{SeriesDescription}-{series.get_image_plane(ImageOrientationPatient)}'))
+    suptitle(f'{study} {SeriesDescription}: {ImagePlane.get(ImageOrientationPatient)}')
+    savefig(join(path,f'{study}-{SeriesDescription}-{ImagePlane.get(ImageOrientationPatient)}'))
     return fig
 
 # MRI_Geometry
@@ -356,21 +365,31 @@ class MRI_Geometry:
                 return closest_dcim,min_distance,norm(centre_pos[0:2] - c[0:2]),M
         return closest_dcim,min_distance,norm(centre_pos[0:2] - c[0:2]),M
 
+def format_group(plane,group):
+    return f'{plane}: [{",".join(series for series in group)}]'
 if __name__=='__main__':
     parser = ArgumentParser('Determine trajectories for all studies')
-    parser.add_argument('--path',    default = r'D:\data\rsna',              help = 'Path for data')
-    parser.add_argument('--unique',  default = 'unique.csv',                 help = 'File name for list of studies whose planes are identical')
-    parser.add_argument('--figs',    default = './figs',                     help = 'Path to store plots')
-    parser.add_argument('--show',    default = False, action = 'store_true', help = 'Set if plots are to be displayed')
-    parser.add_argument('--studies', default = [],    nargs = '*',           help = 'Names of Studies to be processed (omit to process all)' )
-    parser.add_argument('--cmap',    default = 'gray',                       help = 'Colour map for displaying greyscale images')
+    parser.add_argument('--path',     default = r'D:\data\rsna',              help = 'Path for data')
+    parser.add_argument('--unique',   default = 'unique.csv',                 help = 'File name for list of studies whose planes are identical')
+    parser.add_argument('--figs',     default = './figs',                     help = 'Path to store plots')
+    parser.add_argument('--show',     default = False, action = 'store_true', help = 'Set if plots are to be displayed')
+    parser.add_argument('--studies',  default = [],    nargs = '*',           help = 'Names of Studies to be processed (omit to process all)' )
+    parser.add_argument('--cmap',     default = 'gray',                       help = 'Colour map for displaying greyscale images')
+    parser.add_argument('--coplanar', default = 'coplanar.txt')
     args = parser.parse_args()
 
     training = Labelled_MRI_Dataset(args.path,'train')
 
-    with open(args.unique,'w') as out:
+    with open(args.unique,'w') as out,open(args.unique,'w') as coplanar:
         for study in training.get_studies(study_names = args.studies):
             image_planes = study.get_image_planes()
+            groups = {name:[] for name in ImagePlane.names}
+            for series_type, image_plane in zip(Study.Series.Types,image_planes):
+                groups[image_plane].append(series_type)
+            coplanar_groups = {name: groups[name] for name in ImagePlane.names if len(groups[name])>1}
+            ll              = ';'.join(format_group(plane,coplanar_groups[plane]) for plane in sorted(coplanar_groups.keys()))
+            print(f'{study.name}  {ll}' )
+            coplanar.write(f'{study.name}  {ll}\n' )
             if len(set(image_planes))==1:
                 print (study, image_planes[0])
                 out.write(f'{study}, {image_planes[0]}\n')
