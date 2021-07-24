@@ -5,47 +5,13 @@
 from argparse          import ArgumentParser
 from matplotlib.pyplot import close, cm, savefig, show, subplots, suptitle
 from numpy             import array, mean, multiply, std, ones_like, matmul
-from numpy.linalg      import norm
+from numpy.linalg      import inv, norm
 from pydicom           import dcmread
-from mri3d             import Study, declutter
+from mri3d             import Study, MRI_Geometry, declutter
 from os.path           import join
 
 
-class MRI_Geometry:
-    # https://nipy.org/nibabel/dicom/dicom_orientation.html
-    @staticmethod
-    def create_matrix(dcim):
-        delta_i, delta_j       = dcim.PixelSpacing
-        Sx, Sy, Sz             = dcim.ImagePositionPatient
-        Xx, Xy, Xz, Yx, Yy, Yz = dcim.ImageOrientationPatient
-        return array([
-            [Xx*delta_i, Yx*delta_j, 0, Sx],
-            [Xy*delta_i, Yy*delta_j, 0, Sy],
-            [Xz*delta_i, Yz*delta_j, 0, Sz],
-            [0,          0,          0, 1]
-        ])
 
-    @staticmethod
-    def create_vector(i,j):
-        return array([i,j,0,1]).transpose()
-
-    @staticmethod
-    def create_midpoint(dcim):
-        return MRI_Geometry.create_vector(dcim.Rows/2, dcim.Columns/2)
-
-    @staticmethod
-    def get_closest(series,centre_pixel,centre_pos):
-        min_distance = float('inf')
-        closest_dcim = None
-        for dcim in series.dcmread():
-            M    = MRI_Geometry.create_matrix(dcim)
-            c    = matmul(M,centre_pixel)
-            dist = norm(centre_pos - c)
-            if dist<min_distance:
-                min_distance = dist
-                closest_dcim = dcim
-            elif dist>min_distance:
-                return closest_dcim
 
 class SimpleSegmenter:
 
@@ -60,12 +26,21 @@ class SimpleSegmenter:
         self.Threshold = {name:threshold for name,threshold in Threshold.items()}
 
     def segment(self,dcims):
+        II           = MRI_Geometry.create_mapping(dcims['FLAIR'].Rows,dcims['FLAIR'].Columns)
         M            = MRI_Geometry.create_matrix(dcims['FLAIR'])
+        M2           = M[0:2,0:2]
         centre_pixel = MRI_Geometry.create_midpoint(dcims['FLAIR'])
         centre_pos   = matmul(M,centre_pixel)
         for series in study.get_series():
             if series.name!='FLAIR':
-                dcims[series.name] = MRI_Geometry.get_closest(series,centre_pixel,centre_pos)
+                dcims[series.name],min_distance,min_distance2,MM = MRI_Geometry.get_closest(series,centre_pixel,centre_pos)
+                delta_i, delta_j       = dcims['FLAIR'].PixelSpacing
+                if min_distance>0:
+                    print (f'Min distance={min_distance}, projected={min_distance2}, delta_i={delta_i}, delta_j={delta_j} (mm)')
+                # MMI = inv(MM[0:2,0:2])
+                # print (MMI)
+                # III = [[[round(x) for x in matmul(MMI,II[i][j]).tolist()] for j in range(512)] for i in range(512)]
+                # x=0
         Z_normalized = {name:self.get_Z_score(dcim.pixel_array) for name,dcim in dcims.items() }
         thresholded  = {name:self.threshold_pixels(z_normalized,
                                                    threshold=self.Threshold[name])          \

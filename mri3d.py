@@ -1,5 +1,7 @@
 from argparse          import ArgumentParser
 from matplotlib.pyplot import axes, close, cm, figure, get_cmap, savefig, show, subplots, suptitle, title
+from numpy             import array, matmul
+from numpy.linalg      import inv, norm
 from pydicom           import dcmread
 from os                import sep, listdir, walk
 from os.path           import join, normpath
@@ -283,6 +285,54 @@ def plot_series(series,
     suptitle(f'{study} {SeriesDescription}: {series.get_image_plane(ImageOrientationPatient)}')
     savefig(join(path,f'{study}-{SeriesDescription}-{series.get_image_plane(ImageOrientationPatient)}'))
     return fig
+
+# MRI_Geometry
+#
+# Utilites for mapping coordinates
+#
+# https://nipy.org/nibabel/dicom/dicom_orientation.html
+class MRI_Geometry:
+
+    @staticmethod
+    def create_matrix(dcim):
+        delta_i, delta_j       = dcim.PixelSpacing
+        Sx, Sy, Sz             = dcim.ImagePositionPatient
+        Xx, Xy, Xz, Yx, Yy, Yz = dcim.ImageOrientationPatient
+        return array([
+            [Xx*delta_i, Yx*delta_j, 0, Sx],
+            [Xy*delta_i, Yy*delta_j, 0, Sy],
+            [Xz*delta_i, Yz*delta_j, 0, Sz],
+            [0,          0,          0, 1]
+        ])
+
+    @staticmethod
+    def create_vector(i,j):
+        return array([i,j,0,1]).transpose()
+
+    @staticmethod
+    def create_midpoint(dcim):
+        return MRI_Geometry.create_vector(dcim.Rows/2, dcim.Columns/2)
+
+    @staticmethod
+    def create_mapping(rows=256,columns=256):
+        def row(i):
+            return [array([i,j]) for j in range(columns)]
+        return [row(i) for i in range(rows)]
+
+    @staticmethod
+    def get_closest(series,centre_pixel,centre_pos):
+        min_distance = float('inf')
+        closest_dcim = None
+        for dcim in series.dcmread():
+            M    = MRI_Geometry.create_matrix(dcim)
+            c    = matmul(M,centre_pixel)
+            dist = norm(centre_pos - c)
+            if dist<min_distance:
+                min_distance = dist
+                closest_dcim = dcim
+            elif dist>min_distance:
+                return closest_dcim,min_distance,norm(centre_pos[0:2] - c[0:2]),M
+        return closest_dcim,min_distance,norm(centre_pos[0:2] - c[0:2]),M
 
 if __name__=='__main__':
     parser = ArgumentParser('Determine trajectories for all studies')
