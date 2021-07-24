@@ -1,3 +1,25 @@
+# MIT License
+
+# Copyright (c) 2021 Simon Crase -- simon@greenweaves.nz
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 from argparse          import ArgumentParser
 from matplotlib.pyplot import axes, close, cm, figure, get_cmap, savefig, show, subplots, suptitle, title
 from numpy             import array, matmul
@@ -314,10 +336,10 @@ class MRI_Geometry:
         return MRI_Geometry.create_vector(dcim.Rows/2, dcim.Columns/2)
 
     @staticmethod
-    def create_mapping(rows=256,columns=256):
+    def create_mapping(dcim):
         def row(i):
-            return [array([i,j]) for j in range(columns)]
-        return [row(i) for i in range(rows)]
+            return [array([i,j]) for j in range(dcim.Columns)]
+        return [row(i) for i in range(dcim.Rows)]
 
     @staticmethod
     def get_closest(series,centre_pixel,centre_pos):

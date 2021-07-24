@@ -1,17 +1,36 @@
+# MIT License
+
+# Copyright (c) 2021 Simon Crase -- simon@greenweaves.nz
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 # Brain tumor segmentation based on deep learning and an attention mechanism using MRI multi-modalities brain images
 # Ramin Ranjbarzadeh et al
 # https://www.nature.com/articles/s41598-021-90428-8
 
 from argparse          import ArgumentParser
 from matplotlib.pyplot import close, cm, savefig, show, subplots, suptitle
-from numpy             import array, mean, multiply, std, ones_like, matmul
+from numpy             import mean, multiply, std, ones_like, matmul
 from numpy.linalg      import inv, norm
 from pydicom           import dcmread
 from mri3d             import Study, MRI_Geometry, declutter
 from os.path           import join
-
-
-
 
 class SimpleSegmenter:
 
@@ -26,21 +45,15 @@ class SimpleSegmenter:
         self.Threshold = {name:threshold for name,threshold in Threshold.items()}
 
     def segment(self,dcims):
-        II           = MRI_Geometry.create_mapping(dcims['FLAIR'].Rows,dcims['FLAIR'].Columns)
-        M            = MRI_Geometry.create_matrix(dcims['FLAIR'])
-        M2           = M[0:2,0:2]
+        IJ_to_pos    = MRI_Geometry.create_matrix(dcims['FLAIR'])
         centre_pixel = MRI_Geometry.create_midpoint(dcims['FLAIR'])
-        centre_pos   = matmul(M,centre_pixel)
+        centre_pos   = matmul(IJ_to_pos,centre_pixel)
         for series in study.get_series():
             if series.name!='FLAIR':
-                dcims[series.name],min_distance,min_distance2,MM = MRI_Geometry.get_closest(series,centre_pixel,centre_pos)
-                delta_i, delta_j       = dcims['FLAIR'].PixelSpacing
+                dcims[series.name],min_distance,min_distance2,_ = MRI_Geometry.get_closest(series,centre_pixel,centre_pos)
                 if min_distance>0:
+                    delta_i, delta_j = dcims['FLAIR'].PixelSpacing
                     print (f'Min distance={min_distance}, projected={min_distance2}, delta_i={delta_i}, delta_j={delta_j} (mm)')
-                # MMI = inv(MM[0:2,0:2])
-                # print (MMI)
-                # III = [[[round(x) for x in matmul(MMI,II[i][j]).tolist()] for j in range(512)] for i in range(512)]
-                # x=0
         Z_normalized = {name:self.get_Z_score(dcim.pixel_array) for name,dcim in dcims.items() }
         thresholded  = {name:self.threshold_pixels(z_normalized,
                                                    threshold=self.Threshold[name])          \
@@ -65,6 +78,7 @@ if __name__ == '__main__':
     parser.add_argument('--study',   default = '00098')
     parser.add_argument('--path',    default = r'D:\data\rsna',              help = 'Path for data')
     parser.add_argument('--show',    default = False, action = 'store_true', help = 'Set if plots are to be displayed')
+    parser.add_argument('--figs',    default = './figs',                     help = 'Path to store plots')
     args      = parser.parse_args()
     study     = Study(args.study,join(args.path,'train',args.study))
     segmenter = SimpleSegmenter()
@@ -108,7 +122,7 @@ if __name__ == '__main__':
                     declutter(axs[i][3])
 
             suptitle(f'{study}')
-            savefig(f'{study}-{k}')
+            savefig(join(args.figs,f'{study}-{k}'))
             close (fig)
         except SimpleSegmenter.Z_score_failed:
             print (f'Could not calculate Z-score for {k}')
