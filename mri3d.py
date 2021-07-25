@@ -373,9 +373,9 @@ class MRI_Geometry:
 def format_group(plane,group):
     return f'{plane}: [{",".join(series for series in group)}]'
 
-def q(p,index,P0,slope):
-    alpha = p[index]-P0[index]
-    return [alpha*slope[i]*P0[i] for i in range(len(P0))]
+def q(p,index,P0,P1,slope):
+    alpha = (p[index]-P0[index])/(P1[index]-P0[index])
+    return [alpha*slope[i]+P0[i] for i in range(len(P0))]
 
 if __name__=='__main__':
     parser = ArgumentParser('Determine trajectories for all studies')
@@ -398,22 +398,27 @@ if __name__=='__main__':
             for series_type, image_plane in zip(Study.Series.Types,image_planes):
                 groups[image_plane].append(series_type)
             coplanar_groups = {name: groups[name] for name in ImagePlane.names if len(groups[name])>1}
+            Min_Dist  = {}
             for name,group in coplanar_groups.items():
-                Orbits = {series_name:study[series_name].get_orbit() for series_name in group}
+                Orbits    = {series_name:study[series_name].get_orbit() for series_name in group}
                 first_key = list(Orbits.keys())[0]
-                P0 = Orbits[first_key][0]
-                P1 = Orbits[first_key][-1]
-                Delta = [P0[i]-P1[i] for i in range(len(P0))]
-                index, _ = max(enumerate([abs(delta) for delta in Delta]), key=itemgetter(1))
-                slope = [Delta[i]/Delta[index] for i in range(len(P0)) ]
+                P0        = Orbits[first_key][0]
+                P1        = Orbits[first_key][-1]
+                Delta     = [P0[i]-P1[i] for i in range(len(P0))]
+                index, _  = max(enumerate([abs(delta) for delta in Delta]), key=itemgetter(1))
+                slope     = [Delta[i]/Delta[index] for i in range(len(P0)) ]
+
                 for series_name,Orbit in Orbits.items():
                     if series_name == first_key: continue
-                    Distances = [norm([p[i]-q(p,index,P0,slope)[i] for i in range(len(P0))]) for p in Orbits[first_key][1:-1]]
-                    print(series_name,min(Distances))
+                    Distances = [norm([p[i]-q(p,index,P0,P1,slope)[i] for i in range(len(P0))]) for p in Orbits[series_name][1:-1]]
+                    Min_Dist[f'{first_key}-{series_name}'] = min(Distances)
 
             ll              = ';'.join(format_group(plane,coplanar_groups[plane]) for plane in sorted(coplanar_groups.keys()))
             print(f'{study.name}  {ll}' )
             coplanar.write(f'{study.name}  {ll}\n' )
+            for key,value in Min_Dist.items():
+                print (key,value)
+                coplanar.write(f'{key}  {value}\n' )
             if len(set(image_planes))==1:
                 print (study, image_planes[0])
                 out.write(f'{study}, {image_planes[0]}\n')
