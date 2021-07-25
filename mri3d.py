@@ -24,6 +24,7 @@ from argparse          import ArgumentParser
 from matplotlib.pyplot import axes, close, cm, figure, get_cmap, savefig, show, subplots, suptitle, title
 from numpy             import array, matmul
 from numpy.linalg      import inv, norm
+from operator          import itemgetter
 from pydicom           import dcmread
 from os                import sep, listdir, walk
 from os.path           import join, normpath
@@ -137,11 +138,15 @@ class Study:
         def get_values_from_meta(orbit):
             return [[float(a) for a in p] for p in list(zip(*orbit))]
 
-        # get_orbit
+
+        def get_orbit(self):
+            return [[float(a) for a in dcim.ImagePositionPatient] for dcim in self.dcmread(stop_before_pixels=True)]
+
+        # get_orbit_for_plot
         #
         # Get trajectory of patient
 
-        def get_orbit(self):
+        def get_orbit_for_plot(self):
             orbit     = []
             trivial   = []
             brightest = 1
@@ -247,7 +252,7 @@ def plot_orbit(study,
     ax        = axes(projection='3d')
 
     for series in study.get_series():
-        orbit, trivial, SeriesDescription, PatientPosition, ImageOrientationPatient,_ = series.get_orbit()
+        orbit, trivial, SeriesDescription, PatientPosition, ImageOrientationPatient,_ = series.get_orbit_for_plot()
         ax.scatter(*orbit,
                    label = f'{SeriesDescription}: {PatientPosition} {ImagePlane.get(ImageOrientationPatient)}',
                    s     = [1 if t else weight for t in trivial])
@@ -297,9 +302,9 @@ def plot_series(series,
                width  = 20,
                height = 20):
 
-    _, trivial, SeriesDescription, _, ImageOrientationPatient,brightest = series.get_orbit()
-    non_trivial_slices                                        = sum([0 if t else 1 for t in trivial])
-    nrows                                                     = max(2,non_trivial_slices // ncols)
+    _, trivial, Description, _, ImageOrientation,brightest = series.get_orbit_for_plot()
+    non_trivial_slices                                     = sum([0 if t else 1 for t in trivial])
+    nrows                                                  = max(2,non_trivial_slices // ncols)
     while nrows*ncols < non_trivial_slices: nrows +=1
 
     fig,axs   = subplots(nrows = nrows, ncols = ncols, figsize = (width,height))
@@ -313,8 +318,8 @@ def plot_series(series,
         for j in range(ncols):
             declutter(axs[i][j])
 
-    suptitle(f'{study} {SeriesDescription}: {ImagePlane.get(ImageOrientationPatient)}')
-    savefig(join(path,f'{study}-{SeriesDescription}-{ImagePlane.get(ImageOrientationPatient)}'))
+    suptitle(f'{study} {Description}: {ImagePlane.get(ImageOrientation)}')
+    savefig(join(path,f'{study}-{Description}-{ImagePlane.get(ImageOrientation)}'))
     return fig
 
 # MRI_Geometry
@@ -367,6 +372,11 @@ class MRI_Geometry:
 
 def format_group(plane,group):
     return f'{plane}: [{",".join(series for series in group)}]'
+
+def q(p,index,P0,slope):
+    alpha = p[index]-P0[index]
+    return [alpha*slope[i]*P0[i] for i in range(len(P0))]
+
 if __name__=='__main__':
     parser = ArgumentParser('Determine trajectories for all studies')
     parser.add_argument('--path',     default = r'D:\data\rsna',              help = 'Path for data')
@@ -380,21 +390,34 @@ if __name__=='__main__':
 
     training = Labelled_MRI_Dataset(args.path,'train')
 
-    with open(args.unique,'w') as out,open(args.unique,'w') as coplanar:
+    with open(args.unique,'w') as out,              \
+         open(args.coplanar,'w') as coplanar:
         for study in training.get_studies(study_names = args.studies):
             image_planes = study.get_image_planes()
-            groups = {name:[] for name in ImagePlane.names}
+            groups       = {name:[] for name in ImagePlane.names}
             for series_type, image_plane in zip(Study.Series.Types,image_planes):
                 groups[image_plane].append(series_type)
             coplanar_groups = {name: groups[name] for name in ImagePlane.names if len(groups[name])>1}
+            for name,group in coplanar_groups.items():
+                Orbits = {series_name:study[series_name].get_orbit() for series_name in group}
+                first_key = list(Orbits.keys())[0]
+                P0 = Orbits[first_key][0]
+                P1 = Orbits[first_key][-1]
+                Delta = [P0[i]-P1[i] for i in range(len(P0))]
+                index, _ = max(enumerate([abs(delta) for delta in Delta]), key=itemgetter(1))
+                slope = [Delta[i]/Delta[index] for i in range(len(P0)) ]
+                for series_name,Orbit in Orbits.items():
+                    if series_name == first_key: continue
+                    Distances = [norm([p[i]-q(p,index,P0,slope)[i] for i in range(len(P0))]) for p in Orbits[first_key][1:-1]]
+                    print(series_name,min(Distances))
+
             ll              = ';'.join(format_group(plane,coplanar_groups[plane]) for plane in sorted(coplanar_groups.keys()))
             print(f'{study.name}  {ll}' )
             coplanar.write(f'{study.name}  {ll}\n' )
             if len(set(image_planes))==1:
                 print (study, image_planes[0])
                 out.write(f'{study}, {image_planes[0]}\n')
-                fig = plot_orbit(study,
-                                 path = args.figs)
+                fig = plot_orbit(study, path = args.figs)
                 if not args.show:
                     close(fig)
                 for series in study.get_series():
@@ -404,5 +427,6 @@ if __name__=='__main__':
                                       cmap  = args.cmap)
                     if not args.show:
                         close(fig)
+
     if args.show:
         show()
