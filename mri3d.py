@@ -22,7 +22,7 @@
 
 from argparse          import ArgumentParser
 from matplotlib.pyplot import axes, close, cm, figure, get_cmap, savefig, show, subplots, suptitle, title
-from numpy             import array, matmul
+from numpy             import array, matmul, sign
 from numpy.linalg      import inv, norm
 from operator          import itemgetter
 from pydicom           import dcmread
@@ -377,12 +377,11 @@ def format_group(plane,group):
 
 def get_end_distances(coplanar_groups,study):
 
-    def q(p,index,P0,P1,slope):
-        alpha = (p[index]-P0[index])/(P1[index]-P0[index])
-        return [alpha*slope[i]+P0[i] for i in range(len(P0))]
-
-    def d(p,index,P0,P1,slope):
-        return norm([p[i]-q(p,index,P0,P1,slope)[i] for i in range(len(P0))])
+    def get_distance(p,index,P0,P1,slope):
+        def q(i):
+            alpha = (p[index]-P0[index])/(P1[index]-P0[index])
+            return alpha*slope*(P1[i]-P0[i])+P0[i]
+        return norm([p[i]-q(i) for i in range(len(P0))])
 
     Distances  = {}
     for name,group in coplanar_groups.items():
@@ -390,14 +389,14 @@ def get_end_distances(coplanar_groups,study):
         first_key = list(Orbits.keys())[0]
         P0        = Orbits[first_key][0]
         P1        = Orbits[first_key][-1]
-        Delta     = [P0[i]-P1[i] for i in range(len(P0))]
+        Delta     = [P1[i]-P0[i] for i in range(len(P0))]
         index, _  = max(enumerate([abs(delta) for delta in Delta]), key=itemgetter(1))
-        slope     = [Delta[i]/Delta[index] for i in range(len(P0)) ]
+        slope     = sign(Delta[index])
 
         for series_name,Orbit in Orbits.items():
             if series_name == first_key: continue
-            D0 = d(Orbits[series_name][0],index,P0,P1,slope)
-            D1 = d(Orbits[series_name][-1],index,P0,P1,slope)
+            D0 = get_distance(Orbits[series_name][0],index,P0,P1,slope)
+            D1 = get_distance(Orbits[series_name][-1],index,P0,P1,slope)
             Distances[f'{first_key}-{series_name}'] = (D0,D1)
         return Distances
 
@@ -430,7 +429,6 @@ if __name__=='__main__':
                 print (key,value)
                 coplanar.write(f'{key}  {value}\n' )
             if len(set(image_planes))==1:
-                print (study, image_planes[0])
                 out.write(f'{study}, {image_planes[0]}\n')
                 fig = plot_orbit(study, path = args.figs)
                 if not args.show:
