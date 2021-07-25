@@ -373,9 +373,22 @@ class MRI_Geometry:
 def format_group(plane,group):
     return f'{plane}: [{",".join(series for series in group)}]'
 
-
+# get_end_distances
+#
+# Check coplanar groups to see whether observations are collinear
 
 def get_end_distances(coplanar_groups,study):
+
+    # get_distance
+    #
+    # Get distance between point p and the point that corresponds to p on the line[P0,P1],
+    #
+    # Parameters:
+    #     p         The point
+    #     index     Identifies the axis used to establish correspondence
+    #     P0        One of the two endpoints used to determine the line
+    #     P1        One of the two endpoints used to determine the line
+    #     slope     +/1, depending in whether P1[index]?P0[index]
 
     def get_distance(p,index,P0,P1,slope):
         def q(i):
@@ -394,10 +407,9 @@ def get_end_distances(coplanar_groups,study):
         slope     = sign(Delta[index])
 
         for series_name,Orbit in Orbits.items():
-            if series_name == first_key: continue
-            D0 = get_distance(Orbits[series_name][0],index,P0,P1,slope)
-            D1 = get_distance(Orbits[series_name][-1],index,P0,P1,slope)
-            Distances[f'{first_key}-{series_name}'] = (D0,D1)
+            if series_name != first_key:
+                Distances[f'{first_key}-{series_name}'] = (get_distance(Orbits[series_name][0],index,P0,P1,slope),
+                                                           get_distance(Orbits[series_name][-1],index,P0,P1,slope))
         return Distances
 
 if __name__=='__main__':
