@@ -22,7 +22,7 @@
 %
 \author{Simon Crase\inst{1}\orcidID{0000-0001-7846-9552}}
 %
-\authorrunning{Simon Crase}
+\authorrunning{S. Crase}
 % First names are abbreviated in the running head.
 % If there are more than two authors, 'et al.' is used.
 %
@@ -32,8 +32,10 @@
 \maketitle              % typeset the header of the contribution
 %
 \begin{abstract}
-The abstract should briefly summarize the contents of the paper in
-150--250 words.\cite{kaggle2021rsna}
+%The abstract should briefly summarize the contents of the paper in
+%150--250 words.
+This report documents my approach to the RSNA-MICCAI Brain Tumor Radiogenomic Classification
+\cite{kaggle2021rsna}
 
 \keywords{First keyword  \and Second keyword \and Another keyword.}
 \end{abstract}
@@ -57,17 +59,12 @@ The contribution should contain no more than four levels of
 headings. Table~\ref{tab1} gives a summary of all heading levels.
 
 \begin{table}
-\caption{Table captions should be placed above the
-tables.}\label{tab1}
-\begin{tabular}{|l|l|l|}
+\caption{Schedule}\label{tab1}
+\begin{tabular}{|l|l|l|l|}
 \hline
-Heading level &  Example & Font size and style\\
+Task & Description& Target & Achieved\\
 \hline
-Title (centered) &  {\Large\bfseries Lecture Notes} & 14 point, bold\\
-1st-level heading &  {\large\bfseries 1 Introduction} & 12 point, bold\\
-2nd-level heading & {\bfseries 2.1 Printing Area} & 10 point, bold\\
-3rd-level heading & {\bfseries Run-in Heading in Bold.} Text follows & 10 point, bold\\
-4th-level heading & {\itshape Lowest Level Heading.} Text follows & 10 point, italic\\
+Simple Segmentation&Figure 6 from \cite{ranjbarzadeh2021brain} &  28 July 2021 & --\\
 \hline
 \end{tabular}
 \end{table}
@@ -84,9 +81,7 @@ Fig.~\ref{fig1}).
 
 \begin{figure}
 \includegraphics[width=\textwidth]{00100-19}
-\caption{A figure caption is always placed below the illustration.
-Please note that short captions are centered, while long ones are
-justified by the macro package automatically.} \label{fig1}
+\caption{Simple Segmentation.} \label{fig1}
 \end{figure}
 
 \begin{theorem}
@@ -112,6 +107,7 @@ while the following text appears in normal font.
 % \bibliographystyle{splncs04}
 % \bibliography{mybibliography}
 %
+
 \bibliographystyle{splncs04}
 \addcontentsline{toc}{section}{Bibliography}
 \bibliography{rsna}
