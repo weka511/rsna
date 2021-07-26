@@ -40,21 +40,16 @@ class ImagePlane:
 
     # get_image_plane
     #
-    # Snarfed from David Roberts -- https://www.kaggle.com/davidbroberts/determining-mr-image-planes
+    # Adapted from David Roberts -- https://www.kaggle.com/davidbroberts/determining-mr-image-planes
     @staticmethod
     def get(loc):
-        row_x = round(loc[0])
-        row_y = round(loc[1])
-        row_z = round(loc[2])
-        col_x = round(loc[3])
-        col_y = round(loc[4])
-        col_z = round(loc[5])
+        orientation = [round(ll) for ll in loc]
 
-        if row_x == 1 and row_y == 0 and col_x == 0 and col_y == 0:  return "Coronal"
+        if orientation[0] == 1 and orientation[1] == 0 and orientation[3] == 0 and orientation[4] == 0:  return "Coronal"
 
-        if row_x == 0 and row_y == 1 and col_x == 0 and col_y == 0:  return "Sagittal"
+        if orientation[0] == 0 and orientation[1] == 1 and orientation[3] == 0 and orientation[4] == 0:  return "Sagittal"
 
-        if row_x == 1 and row_y == 0 and col_x == 0 and col_y == 1:  return "Axial"
+        if orientation[0] == 1 and orientation[1] == 0 and orientation[3] == 0 and orientation[4] == 1:  return "Axial"
 
         return "Unknown"
 

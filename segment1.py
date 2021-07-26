@@ -32,6 +32,11 @@ from pydicom           import dcmread
 from mri3d             import Study, MRI_Geometry, declutter
 from os.path           import join
 
+# SimpleSegmenter
+#
+# THis is the segmented described in Section 6 of Brain tumor segmentation based on deep learning
+# and an attention mechanism using MRI multi-modalities brain images--Ramin Ranjbarzadeh et al
+# https://www.nature.com/articles/s41598-021-90428-8
 class SimpleSegmenter:
 
     class Z_score_failed(Exception):
@@ -74,7 +79,7 @@ class SimpleSegmenter:
 
 
 if __name__ == '__main__':
-    parser = ArgumentParser()
+    parser = ArgumentParser('Brain tumor segmentation based on deep learning and an attention mechanism using MRI multi-modalities brain images')
     parser.add_argument('--study',   default = '00098')
     parser.add_argument('--path',    default = r'D:\data\rsna',              help = 'Path for data')
     parser.add_argument('--show',    default = False, action = 'store_true', help = 'Set if plots are to be displayed')
