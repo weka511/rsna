@@ -20,8 +20,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from argparse          import ArgumentParser
-from matplotlib.pyplot import axes, close, cm, figure, get_cmap, savefig, show, subplots, suptitle, title
 from numpy             import array, matmul, sign
 from numpy.linalg      import inv, norm
 from operator          import itemgetter
@@ -36,22 +34,24 @@ from re                import match
 # ImagePlane
 
 class ImagePlane:
-    names = ['Sagittal','Axial','Coronal' ]
+    @staticmethod
+    def get_names():
+        return ImagePlane.planes.keys()
 
+    planes = {'Sagittal' : ([0,1,0],[0,0,1]),
+              'Axial'    : ([1,0,0],[0,1,0]),
+              'Coronal'  : ([1,0,0],[0,0,1])}
     # get_image_plane
     #
-    # Adapted from David Roberts -- https://www.kaggle.com/davidbroberts/determining-mr-image-planes
+    # http://dicomiseasy.blogspot.com/2013/06/getting-oriented-using-image-plane.html
+
     @staticmethod
     def get(loc):
-        orientation = [round(ll) for ll in loc]
-
-        if orientation[0] == 1 and orientation[1] == 0 and orientation[3] == 0 and orientation[4] == 0:  return "Coronal"
-
-        if orientation[0] == 0 and orientation[1] == 1 and orientation[3] == 0 and orientation[4] == 0:  return "Sagittal"
-
-        if orientation[0] == 1 and orientation[1] == 0 and orientation[3] == 0 and orientation[4] == 1:  return "Axial"
-
-        return "Unknown"
+        X = [abs(round(a)) for a in loc[:3]]
+        Y = [abs(round(a)) for a in loc[3:]]
+        for image_plane_name,Axes in ImagePlane.planes.items():
+            if X==Axes[0] and Y==Axes[1]:
+                return image_plane_name
 
 
 # Study
@@ -236,29 +236,7 @@ class Labelled_MRI_Dataset(MRI_Dataset):
     def get_label(self, key):
         return int(self.labels[self.labels.BraTS21ID==key].MGMT_value)
 
-# plot_orbit
-#
-# Show how the patient moves through the MRI instrument during one Study
 
-def plot_orbit(study,
-               path   = './',
-               weight = 10):
-    fig       = figure(figsize=(20,20))
-    ax        = axes(projection='3d')
-
-    for series in study.get_series():
-        orbit, trivial, SeriesDescription, PatientPosition, ImageOrientationPatient,_ = series.get_orbit_for_plot()
-        ax.scatter(*orbit,
-                   label = f'{SeriesDescription}: {PatientPosition} {ImagePlane.get(ImageOrientationPatient)}',
-                   s     = [1 if t else weight for t in trivial])
-
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
-    title(f'{study}')
-    ax.legend()
-    savefig(join(path,f'{study}'))
-    return fig
 
 # hide_decorations
 #
@@ -271,51 +249,7 @@ def declutter(ax,spines=['top','right','bottom', 'left']):
         ax.spines[spine].set_visible(False)
 
 
-# create_cells
-#
-# A generator for iterating through cells, left to right, then start next row
 
-def create_cells(ncols,axs):
-    i = 0
-    j = 0
-    while True:
-        yield axs[i,j]
-        j +=1
-        if j==ncols:
-            j = 0
-            i+= 1
-
-# plot_series
-#
-# Plot an entire series of images
-
-def plot_series(series,
-               path   = './',
-               study  = '',
-               ncols  = 6,
-               cmap   = get_cmap('coolwarm'),
-               width  = 20,
-               height = 20):
-
-    _, trivial, Description, _, ImageOrientation,brightest = series.get_orbit_for_plot()
-    non_trivial_slices                                     = sum([0 if t else 1 for t in trivial])
-    nrows                                                  = max(2,non_trivial_slices // ncols)
-    while nrows*ncols < non_trivial_slices: nrows +=1
-
-    fig,axs   = subplots(nrows = nrows, ncols = ncols, figsize = (width,height))
-    cell      = create_cells(ncols,axs)
-
-    for k,dcim in enumerate(series.dcmread()):
-        if not trivial[k]:
-            next(cell).imshow(dcim.pixel_array/brightest,cmap = cmap)
-
-    for i in range(nrows):
-        for j in range(ncols):
-            declutter(axs[i][j])
-
-    suptitle(f'{study} {Description}: {ImagePlane.get(ImageOrientation)}')
-    savefig(join(path,f'{study}-{Description}-{ImagePlane.get(ImageOrientation)}'))
-    return fig
 
 # MRI_Geometry
 #
@@ -365,88 +299,36 @@ class MRI_Geometry:
                 return closest_dcim,min_distance,norm(centre_pos[0:2] - c[0:2]),M
         return closest_dcim,min_distance,norm(centre_pos[0:2] - c[0:2]),M
 
-def format_group(plane,group):
-    return f'{plane}: [{",".join(series for series in group)}]'
 
-# get_end_distances
-#
-# Check coplanar groups to see whether observations are collinear
-
-def get_end_distances(coplanar_groups,study):
-
-    # get_distance
-    #
-    # Get distance between point p and the point that corresponds to p on the line[P0,P1],
-    #
-    # Parameters:
-    #     p         The point
-    #     index     Identifies the axis used to establish correspondence
-    #     P0        One of the two endpoints used to determine the line
-    #     P1        One of the two endpoints used to determine the line
-    #     slope     +/1, depending in whether P1[index]?P0[index]
-
-    def get_distance(p,index,P0,P1,slope):
-        def q(i):
-            alpha = (p[index]-P0[index])/(P1[index]-P0[index])
-            return alpha*slope*(P1[i]-P0[i])+P0[i]
-        return norm([p[i]-q(i) for i in range(len(P0))])
-
-    Distances  = {}
-    for name,group in coplanar_groups.items():
-        Orbits    = {series_name:study[series_name].get_orbit() for series_name in group}
-        first_key = list(Orbits.keys())[0]
-        P0        = Orbits[first_key][0]
-        P1        = Orbits[first_key][-1]
-        Delta     = [P1[i]-P0[i] for i in range(len(P0))]
-        index, _  = max(enumerate([abs(delta) for delta in Delta]), key=itemgetter(1))
-        slope     = sign(Delta[index])
-
-        for series_name,Orbit in Orbits.items():
-            if series_name != first_key:
-                Distances[f'{first_key}-{series_name}'] = (get_distance(Orbits[series_name][0],index,P0,P1,slope),
-                                                           get_distance(Orbits[series_name][-1],index,P0,P1,slope))
-        return Distances
 
 if __name__=='__main__':
-    parser = ArgumentParser('Determine trajectories for all studies')
-    parser.add_argument('--path',     default = r'D:\data\rsna',              help = 'Path for data')
-    parser.add_argument('--unique',   default = 'unique.csv',                 help = 'File name for list of studies whose planes are identical')
-    parser.add_argument('--figs',     default = './figs',                     help = 'Path to store plots')
-    parser.add_argument('--show',     default = False, action = 'store_true', help = 'Set if plots are to be displayed')
-    parser.add_argument('--studies',  default = [],    nargs = '*',           help = 'Names of Studies to be processed (omit to process all)' )
-    parser.add_argument('--cmap',     default = 'gray',                       help = 'Colour map for displaying greyscale images')
-    parser.add_argument('--coplanar', default = 'coplanar.txt')
-    args = parser.parse_args()
 
-    training = Labelled_MRI_Dataset(args.path,'train')
+    def get_image_plane(loc): # https://www.kaggle.com/davidbroberts/determining-mr-image-planes
 
-    with open(args.unique,'w') as out,              \
-         open(args.coplanar,'w') as coplanar:
-        for study in training.get_studies(study_names = args.studies):
-            image_planes = study.get_image_planes()
-            groups       = {name:[] for name in ImagePlane.names}
-            for series_type, image_plane in zip(Study.Series.Types,image_planes):
-                groups[image_plane].append(series_type)
-            coplanar_groups = {name: groups[name] for name in ImagePlane.names if len(groups[name])>1}
+        row_x = round(loc[0])
+        row_y = round(loc[1])
+        row_z = round(loc[2])
+        col_x = round(loc[3])
+        col_y = round(loc[4])
+        col_z = round(loc[5])
 
-            output_line = ';'.join(format_group(plane,coplanar_groups[plane]) for plane in sorted(coplanar_groups.keys()))
-            print(f'{study.name}  {output_line}' )
-            coplanar.write(f'{study.name}  {output_line}\n' )
-            for key,value in get_end_distances(coplanar_groups,study).items():
-                print (key,value)
-                coplanar.write(f'{key}  {value}\n' )
-            if len(set(image_planes))==1:
-                out.write(f'{study}, {image_planes[0]}\n')
-                fig = plot_orbit(study, path = args.figs)
-                if not args.show:
-                    close(fig)
-                for series in study.get_series():
-                    fig = plot_series(series,
-                                      study = study,
-                                      path  = args.figs,
-                                      cmap  = args.cmap)
-                    if not args.show:
-                        close(fig)
+        if row_x == 1 and row_y == 0 and col_x == 0 and col_y == 0:
+            return "Coronal"
 
-    if args.show:
-        show()
+        if row_x == 0 and row_y == 1 and col_x == 0 and col_y == 0:
+            return "Sagittal"
+
+        if row_x == 1 and row_y == 0 and col_x == 0 and col_y == 1:
+            return "Axial"
+
+        return "Unknown"
+
+    training = MRI_Dataset(r'D:\data\rsna','train')
+    for study in training.get_studies():
+        for series in study.get_series():
+            for dcim in series.dcmread(stop_before_pixels=True):
+                new = ImagePlane.get(dcim.ImageOrientationPatient)
+                old = get_image_plane(dcim.ImageOrientationPatient)
+                if new!=old:
+                    print (dcim.ImageOrientationPatient,old,new)
+                break  # Assume all images in series have same orientation
