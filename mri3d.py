@@ -32,6 +32,8 @@ from re                import match
 # http://www.aboutcancer.com/mri_gbm.htm
 
 # ImagePlane
+#
+# This class represents an MRI Image Plane
 
 class ImagePlane:
     @staticmethod
@@ -56,13 +58,18 @@ class ImagePlane:
         # The correct orientation is the one that gives the maximum value for the inner product
         def inner_product(U,V):
             return sum(u*v for u,v in zip(U,V))
-        X              = [float(a) for a in loc[:3]]
-        Y              = [float(a) for a in loc[3:]]
-        inner_products = [(abs(inner_product(X,Axes[0])) + abs(inner_product(Y,Axes[1])), name) for name,Axes in ImagePlane.planes.items()]
-        index, _       = max(enumerate([product for product,_ in inner_products]), key=itemgetter(1))
-        _,name         = inner_products[index]
-        return name
+        X        = [float(a) for a in loc[:3]]
+        Y        = [float(a) for a in loc[3:]]
+        products = [(abs(inner_product(X,Axes[0])) + abs(inner_product(Y,Axes[1])), name) for name,Axes in ImagePlane.planes.items()]
+        index, _ = max(enumerate([product for product,_ in products]), key=itemgetter(1))
+        _,name   = products[index]
+        return ImagePlane(name)
 
+    def __init__(self,name):
+        self.name = name
+
+    def __str__(self):
+        return self.name
 
 # Study
 #
@@ -119,10 +126,15 @@ class Study:
                 if i not in self.missing_images:
                     yield  dcmread(join(self.dirpath,f'Image-{i}.dcm'), stop_before_pixels = stop_before_pixels)
 
+        # __getitem__
+        #
+        # Retrieve image
         def __getitem__(self,i):
             return  dcmread(join(self.dirpath,f'Image-{i}.dcm'))
 
-
+        # __len__
+        #
+        # Number of images in series
         def __len__(self):
             return self.N
 
@@ -143,7 +155,9 @@ class Study:
         def get_values_from_meta(orbit):
             return [[float(a) for a in p] for p in list(zip(*orbit))]
 
-
+        # get_orbit
+        #
+        # Orbit traced by image position [0,0]
         def get_orbit(self):
             return [[float(a) for a in dcim.ImagePositionPatient] for dcim in self.dcmread(stop_before_pixels=True)]
 
@@ -227,7 +241,7 @@ class MRI_Dataset:
 
 class Labelled_MRI_Dataset(MRI_Dataset):
 
-    def __init__(self,path,folder,labels='train_labels.csv'):
+    def __init__(self,path,folder='train',labels='train_labels.csv'):
         super().__init__(path,folder)
         self.labels = read_csv(join(path,labels),dtype={'BraTS21ID':str})
 
@@ -339,7 +353,7 @@ if __name__=='__main__':
     for study in training.get_studies():
         for series in study.get_series():
             for dcim in series.dcmread(stop_before_pixels=True):
-                new = ImagePlane.get(dcim.ImageOrientationPatient)
+                new = str(ImagePlane.get(dcim.ImageOrientationPatient))
                 old = get_image_plane(dcim.ImageOrientationPatient)
                 if new!=old:
                     print (dcim.ImageOrientationPatient,old,new)
