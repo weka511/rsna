@@ -27,7 +27,7 @@
 from argparse          import ArgumentParser
 from matplotlib.pyplot import close, cm, savefig, show, subplots, suptitle
 from numpy             import mean, multiply, std, ones_like, matmul
-from numpy.linalg      import inv, norm
+from numpy.linalg      import norm
 from pydicom           import dcmread
 from mri3d             import Study, MRI_Geometry, declutter
 from os.path           import join

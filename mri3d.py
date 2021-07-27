@@ -21,9 +21,9 @@
 # SOFTWARE.
 
 from numpy             import array, matmul, sign
-from numpy.linalg      import inv, norm
-from operator          import itemgetter
+from numpy.linalg      import norm
 from pydicom           import dcmread
+from operator          import itemgetter
 from os                import sep, listdir, walk
 from os.path           import join, normpath
 from pandas            import read_csv
@@ -38,20 +38,30 @@ class ImagePlane:
     def get_names():
         return ImagePlane.planes.keys()
 
+    # Ideal orientation for rows and columns in image for each image type
+
     planes = {'Sagittal' : ([0,1,0],[0,0,1]),
               'Axial'    : ([1,0,0],[0,1,0]),
               'Coronal'  : ([1,0,0],[0,0,1])}
     # get_image_plane
     #
+    # Compare orientation of rows and columns in image with the ideal orientations
+    # for each possible image plane.
     # http://dicomiseasy.blogspot.com/2013/06/getting-oriented-using-image-plane.html
 
     @staticmethod
     def get(loc):
-        X = [abs(round(a)) for a in loc[:3]]
-        Y = [abs(round(a)) for a in loc[3:]]
-        for image_plane_name,Axes in ImagePlane.planes.items():
-            if X==Axes[0] and Y==Axes[1]:
-                return image_plane_name
+        # inner_product
+        #
+        # The correct orientation is the one that gives the maximum value for the inner product
+        def inner_product(U,V):
+            return sum(u*v for u,v in zip(U,V))
+        X              = [float(a) for a in loc[:3]]
+        Y              = [float(a) for a in loc[3:]]
+        inner_products = [(abs(inner_product(X,Axes[0])) + abs(inner_product(Y,Axes[1])), name) for name,Axes in ImagePlane.planes.items()]
+        index, _       = max(enumerate([product for product,_ in inner_products]), key=itemgetter(1))
+        _,name         = inner_products[index]
+        return name
 
 
 # Study
@@ -302,7 +312,9 @@ class MRI_Geometry:
 
 
 if __name__=='__main__':
-
+    # get_image_plane
+    #
+    # This function serves as a test for ImagePlane.get()
     def get_image_plane(loc): # https://www.kaggle.com/davidbroberts/determining-mr-image-planes
 
         row_x = round(loc[0])

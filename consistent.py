@@ -21,10 +21,10 @@
 # SOFTWARE.
 
 from argparse          import ArgumentParser
-from matplotlib.pyplot import get_cmap, savefig, show, subplots, suptitle
+from matplotlib.pyplot import axes, close, figure, get_cmap, savefig, show, subplots, suptitle, title
 from mri3d             import declutter, ImagePlane, Labelled_MRI_Dataset, Study
 from numpy             import array, matmul, sign
-from numpy.linalg      import inv, norm
+from numpy.linalg      import norm
 from operator          import itemgetter
 from os.path           import join
 
