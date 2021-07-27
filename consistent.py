@@ -151,20 +151,20 @@ if __name__=='__main__':
     parser.add_argument('--coplanar', default = 'coplanar.txt')
     args = parser.parse_args()
 
-    training = Labelled_MRI_Dataset(args.path,'train')
+    dataset = Labelled_MRI_Dataset(args.path,'train')
 
     with open(args.unique,'w') as out,              \
          open(args.coplanar,'w') as coplanar:
-        for study in training.get_studies(study_names = args.studies):
+        for study in dataset.get_studies(study_names = args.studies):
             image_planes = study.get_image_planes()
             groups       = {name:[] for name in ImagePlane.get_names()}
             for series_type, image_plane in zip(Study.Series.Types,image_planes):
-                groups[image_plane].append(series_type)
+                groups[str(image_plane)].append(series_type)
             coplanar_groups = {name: groups[name] for name in ImagePlane.get_names() if len(groups[name])>1}
 
             output_line = ';'.join(format_group(plane,coplanar_groups[plane]) for plane in sorted(coplanar_groups.keys()))
-            print(f'{study.name}  {output_line}' )
-            coplanar.write(f'{study.name}  {output_line}\n' )
+            print(f'{study.name}  {output_line} MGMT={dataset.get_label(study.name)}' )
+            coplanar.write(f'{study.name}  {output_line} MGMT={dataset.get_label(study.name)}\n' )
             for key,value in get_end_distances(coplanar_groups,study).items():
                 print (key,value)
                 coplanar.write(f'{key}  {value}\n' )
