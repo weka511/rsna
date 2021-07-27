@@ -76,7 +76,41 @@ class SimpleSegmenter:
     def threshold_pixels(self,pixel_array,threshold=0.7):
         return (pixel_array>threshold*pixel_array.max())*ones_like(pixel_array)
 
+# BoundingBox
+#
+# This class represents the smallest box that includes all the non-trivial data in an image
+#
+# Note: imshow transposed image, as explained in
+#       https://stackoverflow.com/questions/18237169/flip-x-and-y-axes-for-matplotlib-imshow
+#       This class follows the numpy array, and transposes the box to match the image
 
+class BoundingBox:
+
+    def __init__(self,Rows,Columns,pixel_array):
+        self.i0,self.i1,self.j0,self.j1 = 0,0,0,0
+
+        for i in range(Rows):
+            if sum(pixel_array[i,:]>0):
+                self.i0 = i
+                break
+        for i in range(Rows-1,0,-1):
+            if sum(pixel_array[i,:]>0):
+                self.i1 = i
+                break
+        for j in range(Columns):
+            if sum(pixel_array[:,j]>0):
+                self.j0 = j
+                break
+        for j in range(Columns-1,0,-1):
+            if sum(pixel_array[:,j]>0):
+                self.j1 = j
+                break
+
+    def draw(self,ax=None, color = 'red', linewidth = 3, linestyle='--'):
+        ax.plot([self.j0,self.j0], [self.i0,self.i1], color=color, linewidth=linewidth, linestyle=linestyle)
+        ax.plot([self.j1,self.j1], [self.i0,self.i1], color=color, linewidth=linewidth, linestyle=linestyle)
+        ax.plot([self.j0,self.j1], [self.i0,self.i0], color=color, linewidth=linewidth, linestyle=linestyle)
+        ax.plot([self.j0,self.j1], [self.i1,self.i1], color=color, linewidth=linewidth, linestyle=linestyle)
 
 if __name__ == '__main__':
     parser = ArgumentParser('Brain tumor segmentation based on deep learning and an attention mechanism using MRI multi-modalities brain images')
@@ -97,10 +131,10 @@ if __name__ == '__main__':
             fig,axs      = subplots(nrows = 4, ncols = 4, figsize = (20,20))
             axs[0,0].set_title('Raw')
             for i,series in enumerate(study.get_series()):
-                axs[i,0].imshow(dcims[f'{series}'].pixel_array,
-                                cmap = cm.gray)
+                axs[i,0].imshow(dcims[f'{series}'].pixel_array, cmap = cm.gray)
                 axs[i,0].set_ylabel(f'{series}')
-
+                bounds = BoundingBox(dcims[f'{series}'].Rows,dcims[f'{series}'].Columns,dcims[f'{series}'].pixel_array)
+                bounds.draw(ax=axs[i,0])
 
             axs[0,1].set_title('Z-normalized')
             for i,series in enumerate(study.get_series()):
