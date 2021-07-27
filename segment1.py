@@ -29,7 +29,7 @@ from matplotlib.pyplot import close, cm, savefig, show, subplots, suptitle
 from numpy             import mean, multiply, std, ones_like, matmul
 from numpy.linalg      import norm
 from pydicom           import dcmread
-from mri3d             import Study, MRI_Geometry, declutter
+from mri3d             import declutter, Labelled_MRI_Dataset, MRI_Geometry, Study
 from os.path           import join
 
 # SimpleSegmenter
@@ -85,6 +85,7 @@ if __name__ == '__main__':
     parser.add_argument('--show',    default = False, action = 'store_true', help = 'Set if plots are to be displayed')
     parser.add_argument('--figs',    default = './figs',                     help = 'Path to store plots')
     args      = parser.parse_args()
+    dataset   = Labelled_MRI_Dataset(args.path)
     study     = Study(args.study,join(args.path,'train',args.study))
     segmenter = SimpleSegmenter()
     for k in range(1,200):
@@ -126,7 +127,7 @@ if __name__ == '__main__':
                 else:
                     declutter(axs[i][3])
 
-            suptitle(f'{study}')
+            suptitle(f'{study} MGMT={dataset.get_label(str(study))}')
             savefig(join(args.figs,f'{study}-{k}'))
             close (fig)
         except SimpleSegmenter.Z_score_failed:
