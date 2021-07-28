@@ -11,6 +11,7 @@ consistent.py|Determine trajectories for all studies
 mri3d.py|Classes for entities from the MRI Datamodel
 rsna.wpr|Project file for WingIDE
 segment1.py|Code based on [Brain tumor segmentation based on deep learning and an attention mechanism using MRI multi-modalities brain images--Ramin Ranjbarzadeh et al](https://www.nature.com/articles/s41598-021-90428-8)
+segment3D.py|Visualize & segment in 3D
 sizes.py|Find out sizes of images
 
 ## Documentation

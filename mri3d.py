@@ -79,7 +79,7 @@ class Study:
 
     # Series
     #
-    # Each Study comprises several (in practic 4) Series
+    # Each Study comprises 4 Series
     class Series:
 
         Types = ['FLAIR', 'T1w', 'T1wCE', 'T2w']
