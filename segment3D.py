@@ -40,25 +40,26 @@ if __name__=='__main__':
 
     fig = figure(figsize=(20,20))
     axs  = {series.description:fig.add_subplot(2,2,i+1,projection='3d') for i,series in enumerate(study.get_series())}
+    stride = (2,2,2)
     for series in study.get_series():
         for k,dcim in enumerate(series.dcmread()):
-            if k!=50: continue
-            xs = []
-            ys = []
-            zs = []
-            cs = []
-            Matrix = MRI_Geometry.create_matrix(dcim)
-            for i in range(dcim.Rows):
-                for j in range(dcim.Columns):
-                    vector_ij = array([i,j,0,1])
-                    vector_XYZ = matmul(Matrix,vector_ij)
-                    xs.append(vector_XYZ[0])
-                    ys.append(vector_XYZ[1])
-                    zs.append(vector_XYZ[2])
-                    cs.append(dcim.pixel_array[i,j])
-        # orbit = [dcim.ImagePositionPatient for dcim in series.dcmread()]
-        # path = list(zip(*orbit))
-        axs[series.description].scatter(xs,ys,zs,c=cs)
+            if k%stride[2]==0:
+                xs = []
+                ys = []
+                zs = []
+                cs = []
+                Matrix = MRI_Geometry.create_matrix(dcim)
+                for i in range(0,dcim.Rows,stride[0]):
+                    for j in range(0,dcim.Columns,stride[1]):
+                        if dcim.pixel_array[i,j]>0:
+                            vector_ij = array([i,j,0,1])
+                            vector_XYZ = matmul(Matrix,vector_ij)
+                            xs.append(vector_XYZ[0])
+                            ys.append(vector_XYZ[1])
+                            zs.append(vector_XYZ[2])
+                            cs.append(dcim.pixel_array[i,j])
+
+                axs[series.description].scatter(xs,ys,zs,c=cs,s=1)
         axs[series.description].set_xlabel('X')
         axs[series.description].set_ylabel('Y')
         axs[series.description].set_zlabel('Z')
