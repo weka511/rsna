@@ -66,16 +66,15 @@ if __name__=='__main__':
     parser.add_argument('--show',     default = False, action = 'store_true', help = 'Set if plots are to be displayed')
     parser.add_argument('--study',    default = '00098',                      help = 'Name of Studies to be processed' )
     parser.add_argument('--cmap',     default = 'gray',                       help = 'Colour map for displaying greyscale images')
-    parser.add_argument('--stride',   default = 8)
+    parser.add_argument('--stride',   default = 1, type = int)
     args = parser.parse_args()
 
     dataset = Labelled_MRI_Dataset(args.path,'train')
     study   = dataset[args.study]
     label   = dataset.get_label(args.study)
-
-
-    # axs  = {series.description:fig.add_subplot(2,2,i+1,projection='3d') for i,series in enumerate(study.get_series())}
-
+    Threshold = {'FLAIR' : 0.7,
+                 'T1wCE' : 0.9,
+                 'T2w'   : 0.7}
     for series in study.get_series():
         fig = figure(figsize=(20,20))
         ax = fig.add_subplot(2,1,1,projection='3d')
@@ -85,12 +84,13 @@ if __name__=='__main__':
         ax.set_title(series.description)
         xs,ys,zs,cs = get_3d(series)
         ax.scatter(xs,ys,zs,c=cs,s=1)
-        xs,ys,zs,cs = extract(xs,ys,zs,cs,n=0.7)
-        ax = fig.add_subplot(2,1,2,projection='3d')
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_zlabel('Z')
-        ax.scatter(xs,ys,zs,c=cs,s=1)
+        if series.description in Threshold:
+            xs,ys,zs,cs = extract(xs,ys,zs,cs,n=Threshold[series.description])
+            ax = fig.add_subplot(2,1,2,projection='3d')
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            ax.scatter(xs,ys,zs,c=cs,s=1)
     fig.suptitle(f'{study.name} {label}')
     if args.show:
         show()
