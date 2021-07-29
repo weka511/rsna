@@ -25,6 +25,24 @@ from matplotlib.pyplot import figure, savefig, show
 from mri3d             import Labelled_MRI_Dataset, MRI_Geometry, Study
 from numpy             import array, matmul
 
+def get_3d(dcim):
+    xs = []
+    ys = []
+    zs = []
+    cs = []
+    if dcim.pixel_array.sum()>0:
+        Matrix = MRI_Geometry.create_matrix(dcim)
+        for i in range(0,dcim.Rows,args.stride):
+            for j in range(0,dcim.Columns,args.stride):
+                if dcim.pixel_array[i,j]>0:
+                    vector_ij = array([i,j,0,1])
+                    vector_XYZ = matmul(Matrix,vector_ij)
+                    xs.append(vector_XYZ[0])
+                    ys.append(vector_XYZ[1])
+                    zs.append(vector_XYZ[2])
+                    cs.append(dcim.pixel_array[i,j])
+    return xs,ys,zs,cs
+
 if __name__=='__main__':
     parser = ArgumentParser('Visualize & segment in 3D')
     parser.add_argument('--path',     default = r'D:\data\rsna',              help = 'Path for data')
@@ -32,6 +50,7 @@ if __name__=='__main__':
     parser.add_argument('--show',     default = False, action = 'store_true', help = 'Set if plots are to be displayed')
     parser.add_argument('--study',    default = '00098',                      help = 'Name of Studies to be processed' )
     parser.add_argument('--cmap',     default = 'gray',                       help = 'Colour map for displaying greyscale images')
+    parser.add_argument('--stride',   default = 8)
     args = parser.parse_args()
 
     dataset = Labelled_MRI_Dataset(args.path,'train')
@@ -40,25 +59,11 @@ if __name__=='__main__':
 
     fig = figure(figsize=(20,20))
     axs  = {series.description:fig.add_subplot(2,2,i+1,projection='3d') for i,series in enumerate(study.get_series())}
-    stride = (2,2,2)
-    for series in study.get_series():
-        for k,dcim in enumerate(series.dcmread()):
-            if k%stride[2]==0:
-                xs = []
-                ys = []
-                zs = []
-                cs = []
-                Matrix = MRI_Geometry.create_matrix(dcim)
-                for i in range(0,dcim.Rows,stride[0]):
-                    for j in range(0,dcim.Columns,stride[1]):
-                        if dcim.pixel_array[i,j]>0:
-                            vector_ij = array([i,j,0,1])
-                            vector_XYZ = matmul(Matrix,vector_ij)
-                            xs.append(vector_XYZ[0])
-                            ys.append(vector_XYZ[1])
-                            zs.append(vector_XYZ[2])
-                            cs.append(dcim.pixel_array[i,j])
 
+    for series in study.get_series():
+        for dcim in series.dcmread():
+            xs,ys,zs,cs = get_3d(dcim)
+            if len(xs)>0:
                 axs[series.description].scatter(xs,ys,zs,c=cs,s=1)
         axs[series.description].set_xlabel('X')
         axs[series.description].set_ylabel('Y')
