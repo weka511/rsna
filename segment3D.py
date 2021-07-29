@@ -23,24 +23,40 @@
 from argparse          import ArgumentParser
 from matplotlib.pyplot import figure, savefig, show
 from mri3d             import Labelled_MRI_Dataset, MRI_Geometry, Study
-from numpy             import array, matmul
+from numpy             import array, matmul, mean, std
 
-def get_3d(dcim):
+def get_3d(series):
     xs = []
     ys = []
     zs = []
     cs = []
-    if dcim.pixel_array.sum()>0:
-        Matrix = MRI_Geometry.create_matrix(dcim)
-        for i in range(0,dcim.Rows,args.stride):
-            for j in range(0,dcim.Columns,args.stride):
-                if dcim.pixel_array[i,j]>0:
-                    vector_ij = array([i,j,0,1])
-                    vector_XYZ = matmul(Matrix,vector_ij)
-                    xs.append(vector_XYZ[0])
-                    ys.append(vector_XYZ[1])
-                    zs.append(vector_XYZ[2])
-                    cs.append(dcim.pixel_array[i,j])
+    for dcim in series.dcmread():
+        if dcim.pixel_array.sum()>0:
+            Matrix = MRI_Geometry.create_matrix(dcim)
+            for i in range(0,dcim.Rows,args.stride):
+                for j in range(0,dcim.Columns,args.stride):
+                    if dcim.pixel_array[i,j]>0:
+                        vector_ij = array([i,j,0,1])
+                        vector_XYZ = matmul(Matrix,vector_ij)
+                        xs.append(vector_XYZ[0])
+                        ys.append(vector_XYZ[1])
+                        zs.append(vector_XYZ[2])
+                        cs.append(dcim.pixel_array[i,j])
+    return xs,ys,zs,cs
+
+def  extract(xs0,ys0,zs0,cs0,n=0.7):
+    mu    = mean(cs0)
+    sigma = std(cs0)
+    xs    = []
+    ys    = []
+    zs    = []
+    cs    = []
+    for i in range(len(xs0)):
+        if cs0[i]>mu + n*sigma:
+            xs.append(xs0[i])
+            ys.append(ys0[i])
+            zs.append(zs0[i])
+            cs.append(cs0[i])
     return xs,ys,zs,cs
 
 if __name__=='__main__':
@@ -57,18 +73,24 @@ if __name__=='__main__':
     study   = dataset[args.study]
     label   = dataset.get_label(args.study)
 
-    fig = figure(figsize=(20,20))
-    axs  = {series.description:fig.add_subplot(2,2,i+1,projection='3d') for i,series in enumerate(study.get_series())}
+
+    # axs  = {series.description:fig.add_subplot(2,2,i+1,projection='3d') for i,series in enumerate(study.get_series())}
 
     for series in study.get_series():
-        for dcim in series.dcmread():
-            xs,ys,zs,cs = get_3d(dcim)
-            if len(xs)>0:
-                axs[series.description].scatter(xs,ys,zs,c=cs,s=1)
-        axs[series.description].set_xlabel('X')
-        axs[series.description].set_ylabel('Y')
-        axs[series.description].set_zlabel('Z')
-        axs[series.description].set_title(series.description)
+        fig = figure(figsize=(20,20))
+        ax = fig.add_subplot(2,1,1,projection='3d')
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.set_title(series.description)
+        xs,ys,zs,cs = get_3d(series)
+        ax.scatter(xs,ys,zs,c=cs,s=1)
+        xs,ys,zs,cs = extract(xs,ys,zs,cs,n=0.7)
+        ax = fig.add_subplot(2,1,2,projection='3d')
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.scatter(xs,ys,zs,c=cs,s=1)
     fig.suptitle(f'{study.name} {label}')
     if args.show:
         show()
