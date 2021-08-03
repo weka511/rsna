@@ -23,11 +23,15 @@
 from numpy             import array, matmul, sign
 from numpy.linalg      import norm
 from pydicom           import dcmread
+from pydicom.config    import enforce_valid_values,future_behavior
 from operator          import itemgetter
 from os                import sep, listdir, walk
 from os.path           import join, normpath
 from pandas            import read_csv
 from re                import match
+
+enforce_valid_values =True
+future_behavior()
 
 # http://www.aboutcancer.com/mri_gbm.htm
 
@@ -186,8 +190,8 @@ class Study:
                 series = self.series[path_components[-1]]
                 series.add_images(dirpath,filenames)
 
-    def get_series(self):
-        for name in Study.Series.Types:
+    def get_series(self,types=Series.Types):
+        for name in types:
             yield self.series[name]
 
     @staticmethod
@@ -288,15 +292,14 @@ class MRI_Geometry:
         Sx, Sy, Sz             = dcim.ImagePositionPatient
         Xx, Xy, Xz, Yx, Yy, Yz = dcim.ImageOrientationPatient
         return array([
-            [Xx*delta_i, Yx*delta_j, 0, Sx],
-            [Xy*delta_i, Yy*delta_j, 0, Sy],
-            [Xz*delta_i, Yz*delta_j, 0, Sz],
-            [0,          0,          0, 1]
+            [Xx*delta_i, Yx*delta_j, Sx],
+            [Xy*delta_i, Yy*delta_j, Sy],
+            [Xz*delta_i, Yz*delta_j, Sz]
         ])
 
     @staticmethod
     def create_vector(i,j):
-        return array([i,j,0,1]).transpose()
+        return array([i,j,1]).transpose()
 
     @staticmethod
     def create_midpoint(dcim):
