@@ -27,6 +27,7 @@ from mri3d             import Labelled_MRI_Dataset, MRI_Geometry, Study
 from numpy             import array, matmul, mean, std
 from os.path           import join
 
+
 def get_3d(series):
     xs = []
     ys = []
@@ -37,7 +38,7 @@ def get_3d(series):
         for i in range(0,dcim.Rows,args.stride):
             for j in range(0,dcim.Columns,args.stride):
                 if dcim.pixel_array[i,j]>0:
-                    vector_ij  = array([i,j,0,1])
+                    vector_ij  = array([i,j,1])
                     vector_XYZ = matmul(Matrix,vector_ij)
                     xs.append(vector_XYZ[0])
                     ys.append(vector_XYZ[1])
@@ -68,14 +69,19 @@ if __name__=='__main__':
     parser.add_argument('--study',      default = '00098',                      help = 'Name of Studies to be processed' )
     parser.add_argument('--cmap',       default = 'gray',                       help = 'Colour map for displaying greyscale images')
     parser.add_argument('--stride',     default = 1, type = int,                help = 'Stride for 2D image plane')
-    parser.add_argument('--thresholds', default = ['FLAIR', 0.7, 'T1wCE', 0.9, 'T2w', 0.7], nargs='*', help = 'Cutoff values for plot')
+    parser.add_argument('--thresholds', default = ['FLAIR', 0.7,
+                                                   'T1wCE', 0.9,
+                                                   'T2w', 0.7], nargs='*',      help = 'Cutoff values for plot')
     parser.add_argument('--hist',       default = False, action = 'store_true', help = 'Set if histograms are to be displayed')
+    parser.add_argument('--modalities', default = [], nargs='*')
     args       = parser.parse_args()
     dataset    = Labelled_MRI_Dataset(args.path,'train')
     study      = dataset[args.study]
     label      = dataset.get_label(args.study)
     Threshold  = {args.thresholds[i]:float(args.thresholds[i+1]) for i in range(0,len(args.thresholds),2)}
+    modalities = set(list(Threshold.keys()) + args.modalities)
     for series in study.get_series():
+        if series.description not in modalities: continue
         fig = figure(figsize=(20,20))
         ax1 = fig.add_subplot(2,2,1,projection='3d')
         ax1.set_xlabel('X')
@@ -87,7 +93,7 @@ if __name__=='__main__':
         vmax        = max(cs)
         mu          = mean(cs)
         sigma       = std(cs)
-        im1         = ax1.scatter(xs,ys,zs,c=cs,s=1,cmap=viridis,vmin=vmin,vmax=vmax)
+        im1         = ax1.scatter(xs,ys,zs,c=cs,s=1,cmap=viridis,vmin=vmin,vmax=vmax,alpha=0.5)
         fig.colorbar(im1, ax=ax1)
         if args.hist:
             ax2 = fig.add_subplot(2,2,2)
@@ -99,7 +105,7 @@ if __name__=='__main__':
             ax3.set_xlabel('X')
             ax3.set_ylabel('Y')
             ax3.set_zlabel('Z')
-            im3 = ax3.scatter(xs,ys,zs,c=cs,s=1,cmap=viridis,vmin=vmin,vmax=vmax)
+            im3 = ax3.scatter(xs,ys,zs,c=cs,s=1,cmap=viridis,vmin=vmin,vmax=vmax,alpha=0.5)
             fig.colorbar(im3, ax=ax3)
             ax3.set_title(f'Values over {mu:.0f} + {Threshold[series.description]} * {sigma:.0f} = {mu+Threshold[series.description]*sigma:.0f}')
         fig.suptitle(f'{study.name} {label} {series.description}')
