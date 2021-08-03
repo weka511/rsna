@@ -1,7 +1,7 @@
 
 from pydicom           import dcmread
 from numpy             import zeros
-from matplotlib.pyplot import subplot, imshow, show
+from matplotlib.pyplot import figure, imshow, show, subplot
 from sys               import argv
 from glob              import glob
 
@@ -41,6 +41,7 @@ if __name__=='__main__':
 
     img3d, img_shape = create_image(slices)
     # plot 3 orthogonal slices
+    fig = figure()
     a1 = subplot(2, 2, 1)
     imshow(img3d[:, :, img_shape[2]//2])
     a1.set_aspect(ax_aspect)
