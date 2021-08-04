@@ -27,10 +27,12 @@ from numpy             import argmax, convolve, count_nonzero, ones, zeros
 from scipy.stats       import tmean
 from skimage.measure   import regionprops
 
-def get_mean_intensities(dcims,include_zeros=True):
+def get_mean_intensities(dcims,is_left,L,include_zeros=True):
     def get_mean(pixels):
         try:
-            return tmean(pixels,limits=(0,None),inclusive=(include_zeros,False))
+            return tmean(pixels[:,0:L] if is_left else pixels[:,L:-1],
+                         limits    = (0,None),
+                         inclusive = (include_zeros,False))
         except ValueError:
             return 0
 
@@ -62,7 +64,17 @@ def get_centroid(series):
     # https://stackoverflow.com/questions/48888239/finding-the-center-of-mass-in-an-image
     labeled_foreground = (image > 0).astype(int)
     properties         = regionprops(labeled_foreground, image)
-    return  properties[0].centroid
+    return  [int(z) for z in properties[0].centroid]
+
+
+def establish_left_right(series):
+    L     = get_centroid(series)[1]
+    Area1 = 0
+    Area2 = 0
+    for dcim in series.dcmread():
+        Area1 += dcim.pixel_array[:,0:L].sum()
+        Area2 += dcim.pixel_array[:,L:-1].sum()
+    return Area1>Area2,L
 
 if __name__=='__main__':
     parser = ArgumentParser('Visualize & segment in 3D')
@@ -80,9 +92,9 @@ if __name__=='__main__':
     for series in study.get_series(types=['FLAIR']):
         print (study,series.description)
         verify_axial(series)
-        centroid = get_centroid(series)
+        is_left,L = establish_left_right(series)
         dcim      = series.dcmread()
-        means     = get_mean_intensities(dcim)
+        means     = get_mean_intensities(dcim,is_left,L)
         averages  = get_running_averages(means,h=args.window)
         index_max = argmax(averages)
         print (len(means),len(averages),index_max)
