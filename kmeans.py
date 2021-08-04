@@ -21,6 +21,8 @@
 # SOFTWARE.
 
 from argparse          import ArgumentParser
+from colorsys          import hsv_to_rgb
+from matplotlib.cm     import get_cmap
 from matplotlib.pyplot import figure, legend, plot, show, suptitle
 from mri3d             import ImagePlane, Labelled_MRI_Dataset
 from numpy             import argmax, convolve, count_nonzero, ones, zeros
@@ -67,7 +69,7 @@ def get_centroid(series):
     return  [int(z) for z in properties[0].centroid]
 
 
-def establish_left_right(series):
+def determine_hemisphere(series):
     L     = get_centroid(series)[1]
     Area1 = 0
     Area2 = 0
@@ -76,36 +78,73 @@ def establish_left_right(series):
         Area2 += dcim.pixel_array[:,L:-1].sum()
     return Area1>Area2,L
 
+def pseudocolor(pixel_array): #https://github.com/NikosMouzakitis/Brain-tumor-detection-using-Kmeans-and-histogram
+    M,N    = pixel_array.shape
+    RGB    = zeros((M,N,3))
+    maxval = pixel_array.max()
+    for i in range(M):
+        for j in range(N):
+            if pixel_array[i,j]>0:
+                RGB[i,j,:] = hsv_to_rgb(pixel_array[i,j]/maxval, 1, 1)
+
+    return RGB
+
 if __name__=='__main__':
     parser = ArgumentParser('Visualize & segment in 3D')
+    parser.add_argument('actions',      choices=['slice', 'kmeans'], nargs='+')
     parser.add_argument('--path',       default = r'D:\data\rsna',              help = 'Path for data')
     parser.add_argument('--figs',       default = './figs',                     help = 'Path to store plots')
     parser.add_argument('--show',       default = False, action = 'store_true', help = 'Set if plots are to be displayed')
     parser.add_argument('--study',      default = '00098',                      help = 'Name of Studies to be processed' )
-    parser.add_argument('--window',    default=8, type=int)
+    parser.add_argument('--window',     default=8,  type=int)
+    parser.add_argument('--nrows',      default=4,  type=int)
+    parser.add_argument('--ncols',      default=4,  type=int)
+    parser.add_argument('--slices',     default=[], type=int, nargs = '+')
     args       = parser.parse_args()
 
     dataset    = Labelled_MRI_Dataset(args.path,'train')
     study      = dataset[args.study]
     label      = dataset.get_label(args.study)
+    slices     = args.slices
+    if 'slice' in args.actions:
+        for series in study.get_series(types=['FLAIR']):
+            verify_axial(series)
+            is_left,L = determine_hemisphere(series)
+            dcim      = series.dcmread()
+            means     = get_mean_intensities(dcim,is_left,L)
+            averages  = get_running_averages(means,h=args.window)
+            index_max = argmax(averages)
+            print (study,series.description, len(means),len(averages),index_max, is_left,L)
+            centre    = args.window+index_max
+            nrows    = args.nrows
+            ncols = args.ncols
+            fig       = figure(figsize=(20,20))
+            suptitle(args.study)
+            ax1 = fig.add_subplot(nrows,ncols,1)
+            ax1.plot(means[args.window:], label='means',color='xkcd:blue')
+            ax1.plot(averages, label='averages',color='xkcd:red')
+            ax1.legend()
 
-    for series in study.get_series(types=['FLAIR']):
-        print (study,series.description)
-        verify_axial(series)
-        is_left,L = establish_left_right(series)
-        dcim      = series.dcmread()
-        means     = get_mean_intensities(dcim,is_left,L)
-        averages  = get_running_averages(means,h=args.window)
-        index_max = argmax(averages)
-        print (len(means),len(averages),index_max)
-        fig = figure(figsize=(20,20))
-        suptitle(args.study)
-        ax1 = fig.add_subplot(2,2,1)
-        ax1.plot(means[args.window:], label='means',color='xkcd:blue')
-        ax1.plot(averages, label='averages',color='xkcd:red')
-        ax1.legend()
-        ax2 = fig.add_subplot(2,2,2)
-        ax2.imshow(series[series.seqs[args.window+index_max]].pixel_array)
+            slices = [series.seqs[centre+i-nrows*ncols//2] for i in range(2,nrows*ncols+1)]
+            for i in range(2,nrows*ncols+1):
+                try:
+                    ax2         = fig.add_subplot(nrows,ncols,i)
+                    pixel_array = series[slices[i]].pixel_array
+                    # rgb         = pseudocolor(pixel_array)
+                    ax2.imshow(pixel_array,cmap='gray')
+                    ax2.set_title(slices[i])
+                except IndexError:
+                    break
 
+    if 'kmeans' in args.actions:
+        print (f'Slices: {slices}')
+        for seq in slices:
+            for series in study.get_series(types=['FLAIR']):
+                fig = figure(figsize=(20,20))
+                ax1 = fig.add_subplot(1,1,1)
+                pixel_array = series[seq].pixel_array
+                rgb         = pseudocolor(pixel_array)
+                ax1.imshow(rgb)
+                ax1.set_title(seq)
     if args.show:
         show()
