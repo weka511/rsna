@@ -22,8 +22,7 @@
 
 from argparse          import ArgumentParser
 from colorsys          import hsv_to_rgb
-from math              import isqrt
-from matplotlib.pyplot import figure, legend, plot, show, suptitle
+from matplotlib.pyplot import figure, legend, plot, savefig, show, suptitle
 from mri3d             import ImagePlane, Labelled_MRI_Dataset
 from numpy             import argmax, convolve, count_nonzero, ones, zeros
 from scipy.stats       import tmean
@@ -109,27 +108,13 @@ def get_pseudocolour(pixel_array):
     return rgb
 
 # https://github.com/NikosMouzakitis/Brain-tumor-detection-using-Kmeans-and-histogram/
-def cluster(lab,K = 10):
-    M,N,C       = lab.shape
-    Z           = zeros((M*N,2))
-    idx         = 0
-    for i in range(M):
-        for j in range(N):
-            Z[idx][0] = lab[i,j,1]
-            Z[idx][1] = lab[i,j,0]
-            idx += 1
-
+def cluster(Lab,K = 10):
+    M,N,C  = Lab.shape
+    Z      = Lab[:,:,1:3].reshape(M*N,2)
     kmeans = KMeans(n_clusters=K, random_state=0).fit(Z)
-    Labels = kmeans.labels_
-    Labels = Labels.reshape(M,N)
-    return Labels,M,N
+    return kmeans.labels_.reshape(M,N)
 
-def rule_up(K):
-    m = isqrt(K)
-    n = K//m
-    while m*n < K:
-        n+=1
-    return m,n
+
 
 if __name__=='__main__':
     parser = ArgumentParser('Segment using kmeans and false colours')
@@ -168,7 +153,7 @@ if __name__=='__main__':
             ax1.plot(means[args.window:], label='means',color='xkcd:blue')
             ax1.plot(averages, label='averages',color='xkcd:red')
             ax1.legend()
-
+            savefig('{study}-slice')
             slices = [series.seqs[centre+i-nrows*ncols//2] for i in range(2,nrows*ncols+1)]
             for i in range(2,nrows*ncols+1):
                 try:
@@ -184,8 +169,8 @@ if __name__=='__main__':
             for series in study.get_series(types=['FLAIR']):
                 pixel_array = series[seq].pixel_array
                 rgb         = get_pseudocolour(pixel_array)
-                lab         = rgb2lab(rgb)
-                Labels,M,N  = cluster(lab,K=args.K)
+                Lab         = rgb2lab(rgb)
+                Labels      = cluster(Lab,K=args.K)
 
                 fig = figure(figsize=(20,20))
                 ax1 = fig.add_subplot(2,2,1)
@@ -193,25 +178,40 @@ if __name__=='__main__':
                 ax2 = fig.add_subplot(2,2,2)
                 ax2.imshow(rgb)
                 ax3 = fig.add_subplot(2,2,3)
-                ax3.imshow(lab)
+                ax3.imshow(Lab)
                 suptitle(f'{args.study} {seq}')
 
+                M,N = Labels.shape
                 fig = figure(figsize=(20,20))
                 desimg = zeros((M,N))
 
-                m,n = rule_up(args.K+1)
+                m,n = 2,args.K+1
+
                 for k in range(args.K):
+                    Ls = []
                     blanks = zeros((M,N))
                     for i in range(M):
                         for j in range(N):
                             if Labels[i,j]==k:
-                                blanks[i,j]=1
+                                blanks[i,j] = 1
+                                Ls.append(Lab[i,j,0])
                                 if k==args.K-1:
-                                    desimg[i,j]=pixel_array[i,j] # FIXME
+                                    desimg[i,j] = pixel_array[i,j] # FIXME
                     ax = fig.add_subplot(m,n,k+1)
                     ax.imshow(blanks,cmap='gray')
+                    ax = fig.add_subplot(m,n,k+n+1)
+                    ax.hist(Ls)
+
                 ax = fig.add_subplot(m,n,args.K+1)
                 ax.imshow(blanks,cmap='afmhot')
+            savefig('{study}-{seq}')
+
+            fig = figure(figsize=(20,20))
+            ax1 = fig.add_subplot(2,2,1)
+            ax1.imshow(Labels, cmap='coolwarm', interpolation='nearest')
+            ax2 = fig.add_subplot(2,2,2)
+            n,bins,_ = ax2.hist(Lab[:,:,0].flatten(),bins=256)
+            savefig('{study}-final')
 
     if args.show:
         show()
