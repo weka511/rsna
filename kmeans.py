@@ -22,12 +22,16 @@
 
 from argparse          import ArgumentParser
 from colorsys          import hsv_to_rgb
-from matplotlib.cm     import get_cmap
+from math              import isqrt
 from matplotlib.pyplot import figure, legend, plot, show, suptitle
 from mri3d             import ImagePlane, Labelled_MRI_Dataset
 from numpy             import argmax, convolve, count_nonzero, ones, zeros
 from scipy.stats       import tmean
+from skimage.color     import rgb2lab
 from skimage.measure   import regionprops
+from sklearn.cluster   import KMeans
+
+# get_mean_intensities
 
 def get_mean_intensities(dcims,is_left,L,include_zeros=True):
     def get_mean(pixels):
@@ -40,20 +44,29 @@ def get_mean_intensities(dcims,is_left,L,include_zeros=True):
 
     return [get_mean(dcim.pixel_array) for dcim in dcims]
 
- # https://stackoverflow.com/questions/13728392/moving-average-or-running-mean
+# get_running_averages
+#
+# Calculate a running average
+#
+# https://stackoverflow.com/questions/13728392/moving-average-or-running-mean
 
-def get_running_averages(means,h=8, mode='full'):
-    return  convolve(means, ones(2*h+1)/(2*h+1), mode=mode)
+def get_running_averages(xs, h=8, mode='full'):
+    return  convolve(xs, ones(2*h+1)/(2*h+1), mode=mode)
+
+# verify_axial
 
 def verify_axial(series):
     for dcim in series.dcmread():
         assert str(ImagePlane.get(dcim.ImageOrientationPatient))=='Axial'
         return
 
+# get_centroid_biggest_slice
+#
+# Find centroid of the largest slice of the brain
 
-def get_centroid(series):
+def get_centroid_biggest_slice(series):
     def get_biggest_slice():
-        best_seq = None
+        best_seq   = None
         best_count = -1
         for i,dcim in enumerate(series.dcmread()):
             non_zero_count = count_nonzero(dcim.pixel_array)
@@ -62,15 +75,17 @@ def get_centroid(series):
                 best_seq = i
         return series[series.seqs[best_seq]].pixel_array
 
-    image = get_biggest_slice()
-    # https://stackoverflow.com/questions/48888239/finding-the-center-of-mass-in-an-image
-    labeled_foreground = (image > 0).astype(int)
-    properties         = regionprops(labeled_foreground, image)
-    return  [int(z) for z in properties[0].centroid]
+    def get_centroid(image): # https://stackoverflow.com/questions/48888239/finding-the-center-of-mass-in-an-image
+        labeled_foreground = (image > 0).astype(int)
+        properties         = regionprops(labeled_foreground, image)
+        return  [int(z) for z in properties[0].centroid]
 
+    return get_centroid(get_biggest_slice())
+
+# determine_hemisphere
 
 def determine_hemisphere(series):
-    L     = get_centroid(series)[1]
+    L     = get_centroid_biggest_slice(series)[1]
     Area1 = 0
     Area2 = 0
     for dcim in series.dcmread():
@@ -78,34 +93,63 @@ def determine_hemisphere(series):
         Area2 += dcim.pixel_array[:,L:-1].sum()
     return Area1>Area2,L
 
-def pseudocolor(pixel_array): #https://github.com/NikosMouzakitis/Brain-tumor-detection-using-Kmeans-and-histogram
+# get_pseudocolour
+#
+# It isn't clear exactly how Wu et al do this, but I have adapted code that I found at
+# https://github.com/NikosMouzakitis/Brain-tumor-detection-using-Kmeans-and-histogram
+def get_pseudocolour(pixel_array):
     M,N    = pixel_array.shape
-    RGB    = zeros((M,N,3))
+    rgb    = zeros((M,N,3))
     maxval = pixel_array.max()
     for i in range(M):
         for j in range(N):
             if pixel_array[i,j]>0:
-                RGB[i,j,:] = hsv_to_rgb(pixel_array[i,j]/maxval, 1, 1)
+                rgb[i,j,:] = hsv_to_rgb(pixel_array[i,j]/maxval, 1, 1)
 
-    return RGB
+    return rgb
+
+# https://github.com/NikosMouzakitis/Brain-tumor-detection-using-Kmeans-and-histogram/
+def cluster(lab,K = 10):
+    M,N,C       = lab.shape
+    Z           = zeros((M*N,2))
+    idx         = 0
+    for i in range(M):
+        for j in range(N):
+            Z[idx][0] = lab[i,j,1]
+            Z[idx][1] = lab[i,j,0]
+            idx += 1
+
+    kmeans = KMeans(n_clusters=K, random_state=0).fit(Z)
+    Labels = kmeans.labels_
+    Labels = Labels.reshape(M,N)
+    return Labels,M,N
+
+def rule_up(K):
+    m = isqrt(K)
+    n = K//m
+    while m*n < K:
+        n+=1
+    return m,n
 
 if __name__=='__main__':
-    parser = ArgumentParser('Visualize & segment in 3D')
+    parser = ArgumentParser('Segment using kmeans and false colours')
     parser.add_argument('actions',      choices=['slice', 'kmeans'], nargs='+')
     parser.add_argument('--path',       default = r'D:\data\rsna',              help = 'Path for data')
     parser.add_argument('--figs',       default = './figs',                     help = 'Path to store plots')
     parser.add_argument('--show',       default = False, action = 'store_true', help = 'Set if plots are to be displayed')
     parser.add_argument('--study',      default = '00098',                      help = 'Name of Studies to be processed' )
-    parser.add_argument('--window',     default=8,  type=int)
+    parser.add_argument('--window',     default=8,  type=int,                   help = 'Window will lead and trail by this amount')
     parser.add_argument('--nrows',      default=4,  type=int)
     parser.add_argument('--ncols',      default=4,  type=int)
     parser.add_argument('--slices',     default=[], type=int, nargs = '+')
+    parser.add_argument('--K',          default=10,  type=int,                 help = 'Number of clusters for kMeans')
     args       = parser.parse_args()
 
     dataset    = Labelled_MRI_Dataset(args.path,'train')
     study      = dataset[args.study]
     label      = dataset.get_label(args.study)
     slices     = args.slices
+
     if 'slice' in args.actions:
         for series in study.get_series(types=['FLAIR']):
             verify_axial(series)
@@ -129,9 +173,7 @@ if __name__=='__main__':
             for i in range(2,nrows*ncols+1):
                 try:
                     ax2         = fig.add_subplot(nrows,ncols,i)
-                    pixel_array = series[slices[i]].pixel_array
-                    # rgb         = pseudocolor(pixel_array)
-                    ax2.imshow(pixel_array,cmap='gray')
+                    ax2.imshow(series[slices[i]].pixel_array,cmap='gray')
                     ax2.set_title(slices[i])
                 except IndexError:
                     break
@@ -140,11 +182,36 @@ if __name__=='__main__':
         print (f'Slices: {slices}')
         for seq in slices:
             for series in study.get_series(types=['FLAIR']):
-                fig = figure(figsize=(20,20))
-                ax1 = fig.add_subplot(1,1,1)
                 pixel_array = series[seq].pixel_array
-                rgb         = pseudocolor(pixel_array)
-                ax1.imshow(rgb)
-                ax1.set_title(seq)
+                rgb         = get_pseudocolour(pixel_array)
+                lab         = rgb2lab(rgb)
+                Labels,M,N  = cluster(lab,K=args.K)
+
+                fig = figure(figsize=(20,20))
+                ax1 = fig.add_subplot(2,2,1)
+                ax1.imshow(pixel_array,cmap='gray')
+                ax2 = fig.add_subplot(2,2,2)
+                ax2.imshow(rgb)
+                ax3 = fig.add_subplot(2,2,3)
+                ax3.imshow(lab)
+                suptitle(f'{args.study} {seq}')
+
+                fig = figure(figsize=(20,20))
+                desimg = zeros((M,N))
+
+                m,n = rule_up(args.K+1)
+                for k in range(args.K):
+                    blanks = zeros((M,N))
+                    for i in range(M):
+                        for j in range(N):
+                            if Labels[i,j]==k:
+                                blanks[i,j]=1
+                                if k==args.K-1:
+                                    desimg[i,j]=pixel_array[i,j] # FIXME
+                    ax = fig.add_subplot(m,n,k+1)
+                    ax.imshow(blanks,cmap='gray')
+                ax = fig.add_subplot(m,n,args.K+1)
+                ax.imshow(blanks,cmap='afmhot')
+
     if args.show:
         show()
