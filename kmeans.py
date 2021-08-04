@@ -25,10 +25,12 @@ from colorsys          import hsv_to_rgb
 from matplotlib.pyplot import figure, legend, plot, savefig, show, suptitle
 from mri3d             import ImagePlane, Labelled_MRI_Dataset
 from numpy             import argmax, convolve, count_nonzero, ones, zeros
+from os.path           import join
 from scipy.stats       import tmean
 from skimage.color     import rgb2lab
 from skimage.measure   import regionprops
 from sklearn.cluster   import KMeans
+
 
 # get_mean_intensities
 
@@ -153,7 +155,7 @@ if __name__=='__main__':
             ax1.plot(means[args.window:], label='means',color='xkcd:blue')
             ax1.plot(averages, label='averages',color='xkcd:red')
             ax1.legend()
-            savefig('{study}-slice')
+            savefig(join(args.figs,f'{study}-slice'))
             slices = [series.seqs[centre+i-nrows*ncols//2] for i in range(2,nrows*ncols+1)]
             for i in range(2,nrows*ncols+1):
                 try:
@@ -180,7 +182,7 @@ if __name__=='__main__':
                 ax3 = fig.add_subplot(2,2,3)
                 ax3.imshow(Lab)
                 suptitle(f'{args.study} {seq}')
-
+                savefig(join(args.figs,f'{study}-image'))
                 M,N = Labels.shape
                 fig = figure(figsize=(20,20))
                 desimg = zeros((M,N))
@@ -204,14 +206,14 @@ if __name__=='__main__':
 
                 ax = fig.add_subplot(m,n,args.K+1)
                 ax.imshow(blanks,cmap='afmhot')
-            savefig('{study}-{seq}')
+            savefig(join(args.figs,f'{study}-{seq}'))
 
             fig = figure(figsize=(20,20))
             ax1 = fig.add_subplot(2,2,1)
             ax1.imshow(Labels, cmap='coolwarm', interpolation='nearest')
             ax2 = fig.add_subplot(2,2,2)
             n,bins,_ = ax2.hist(Lab[:,:,0].flatten(),bins=256)
-            savefig('{study}-final')
+            savefig(join(args.figs,f'{study}-final'))
 
     if args.show:
         show()
