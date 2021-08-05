@@ -24,12 +24,11 @@ from argparse          import ArgumentParser
 from colorsys          import hsv_to_rgb
 from math              import isqrt
 from matplotlib.pyplot import close, figure, legend, plot, savefig, show, suptitle
-from mri3d             import ImagePlane, MRI_Dataset
+from mri3d             import ImagePlane, MRI_Dataset, MRI_Geometry
 from numpy             import argmax, convolve, count_nonzero, mean, ones, std, zeros
 from os.path           import join
 from scipy.stats       import tmean
 from skimage.color     import rgb2lab
-from skimage.measure   import regionprops
 from sklearn.cluster   import KMeans
 
 
@@ -64,42 +63,15 @@ def verify_axial(series):
         assert str(ImagePlane.get(dcim.ImageOrientationPatient))=='Axial'
         return
 
-# get_centroid
-#
-# Get centroid of an image
-
-def get_centroid(image): # https://stackoverflow.com/questions/48888239/finding-the-center-of-mass-in-an-image
-    labeled_foreground = (image > 0).astype(int)
-    properties         = regionprops(labeled_foreground, image)
-    return  [int(z) for z in properties[0].centroid]
-
-# get_centroid_biggest_slice
-#
-# Find centroid of the largest slice of the brain
-
-def get_centroid_biggest_slice(series):
-    def get_biggest_slice():
-        best_seq   = None
-        best_count = -1
-        for i,dcim in enumerate(series.dcmread()):
-            non_zero_count = count_nonzero(dcim.pixel_array)
-            if non_zero_count>best_count:
-                best_count = non_zero_count
-                best_seq = i
-        return series[series.seqs[best_seq]].pixel_array
-
-    return get_centroid(get_biggest_slice())
 
 # determine_hemisphere
 
 def determine_hemisphere(series):
-    # L     = get_centroid_biggest_slice(series)[1]
     Area1 = 0
     Area2 = 0
     for dcim in series.dcmread():
-        print (dcim.ImagePositionPatient)
         try:
-            L      = get_centroid(dcim.pixel_array)[1]
+            L      = MRI_Geometry.get_centroid(dcim)[1]
             Area1 += dcim.pixel_array[:,0:L].sum()
             Area2 += dcim.pixel_array[:,L:-1].sum()
         except IndexError:
@@ -138,6 +110,22 @@ def find_limit(index_max,cutoff,averages,direction=+1):
         index += direction
     return index
 
+def detect_slice_range(series,half_width=8):
+    is_left,L = determine_hemisphere(series)
+    dcim      = series.dcmread()
+    means     = get_mean_intensities(dcim,is_left,L)
+    m         = 2*half_width+1
+    averages  = [0]*half_width + [mean(means[i:i+m+1]) for i in range(len(means)-m)]
+    stds      = [0]*half_width + [std(means[i:i+m+1]) for i in range(len(means)-m)]
+    index_max = argmax(averages)
+    return is_left, means, averages,stds,index_max
+
+def segment(dcim,K=10):
+    rgb         = get_pseudocolour(dcim.pixel_array)
+    Lab         = rgb2lab(rgb)
+    Labels      = cluster(Lab,K=K)
+    return rgb, Lab, Labels
+
 # partition_figure
 def partition_figure(total_cells):
     m = isqrt(total_cells)
@@ -156,10 +144,10 @@ def get_axes(width=20,height=20,detailed=False,rows=2,columns=1,show=False):
     n   = 1 if detailed else columns
     for j in range(columns):
         if detailed and j>0:
-            if not show:
-                close(fig)
             fig = figure(figsize=(width,height))
         yield [fig.add_subplot(m,n,1+j%n+i*n) for i in range(m)]
+        if not show:
+            close(fig)
 
 if __name__=='__main__':
     parser = ArgumentParser('Segment using kmeans and false colours')
@@ -186,15 +174,8 @@ if __name__=='__main__':
         for series in study.get_series(types=[args.modality]):
             print (study,series.description)
             verify_axial(series)
-            is_left,L = determine_hemisphere(series)
-            dcim      = series.dcmread()
-            means     = get_mean_intensities(dcim,is_left,L)
-            m         = 2*args.window+1
-            averages  = [0]*args.window + [mean(means[i:i+m+1]) for i in range(len(means)-m)]
-            stds      = [0]*args.window + [std(means[i:i+m+1]) for i in range(len(means)-m)]
-            index_max = argmax(averages)
-            centre    = args.window+index_max
-            fig       = figure(figsize=(20,20))
+            is_left, means, averages,stds,index_max = detect_slice_range(series,half_width=args.window)
+            fig = figure(figsize=(20,20))
             suptitle(args.study)
             ax1 = fig.add_subplot(2,1,1)
             ax1.plot(means[args.window:], label='means',color='xkcd:blue')
@@ -228,14 +209,10 @@ if __name__=='__main__':
         print (f'Slices: {slices}')
         for seq in slices:
             for series in study.get_series(types=[args.modality]):
-                pixel_array = series[seq].pixel_array
-                rgb         = get_pseudocolour(pixel_array)
-                Lab         = rgb2lab(rgb)
-                Labels      = cluster(Lab,K=args.K)
-
+                rgb, Lab, Labels = segment(series[seq],K=args.K)
                 fig = figure(figsize=(20,20))
                 ax1 = fig.add_subplot(2,2,1)
-                ax1.imshow(pixel_array,cmap='gray')
+                ax1.imshow(series[seq].pixel_array,cmap='gray')
                 ax2 = fig.add_subplot(2,2,2)
                 ax2.imshow(rgb)
                 ax3 = fig.add_subplot(2,2,3)
@@ -265,9 +242,6 @@ if __name__=='__main__':
                         axes[1].set_ylabel('Luminosities')
                     if detailed or k==args.K-1:
                         savefig(join(args.figs,f'{study}-{args.modality}-{seq}-{k}'),dpi=250) #FIXME
-
-            if not args.show:
-                close(fig)
 
             fig = figure(figsize=(20,20))
             ax1 = fig.add_subplot(2,2,1)

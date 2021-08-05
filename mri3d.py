@@ -29,6 +29,7 @@ from os                import sep, listdir, walk
 from os.path           import join, normpath
 from pandas            import read_csv
 from re                import match
+from skimage.measure   import regionprops
 
 enforce_valid_values =True
 future_behavior()
@@ -327,6 +328,31 @@ class MRI_Geometry:
         return closest_dcim,min_distance,norm(centre_pos[0:2] - c[0:2]),M
 
 
+    # get_centroid
+    #
+    # Get centroid of the non-zero pixels in a slice
+    @staticmethod
+    def get_centroid(dcim): # https://stackoverflow.com/questions/48888239/finding-the-center-of-mass-in-an-image
+        labeled_foreground = (dcim.pixel_array > 0).astype(int)
+        properties         = regionprops(labeled_foreground, dcim.pixel_array)
+        return  [int(z) for z in properties[0].centroid]
+
+    # get_centroid_biggest_slice
+    #
+    # Find centroid of the largest slice of the brain
+    @staticmethod
+    def get_centroid_biggest_slice(series):
+        def get_biggest_slice():
+            best_seq   = None
+            best_count = -1
+            for i,dcim in enumerate(series.dcmread()):
+                non_zero_count = count_nonzero(dcim.pixel_array)
+                if non_zero_count>best_count:
+                    best_count = non_zero_count
+                    best_seq = i
+            return series[series.seqs[best_seq]].pixel_array
+
+        return get_centroid(get_biggest_slice())
 
 if __name__=='__main__':
     # get_image_plane
