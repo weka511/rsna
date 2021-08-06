@@ -30,7 +30,7 @@ from os.path           import join
 from scipy.stats       import tmean
 from skimage.color     import rgb2lab
 from sklearn.cluster   import KMeans
-
+from sklearn.metrics   import calinski_harabasz_score
 
 # get_mean_intensities
 
@@ -100,6 +100,7 @@ def cluster(Lab,K = 10):
     M,N,_  = Lab.shape
     Z      = Lab[:,:,1:3].reshape(M*N,2)
     kmeans = KMeans(n_clusters=K, random_state=0).fit(Z)
+    print (f'Calinski Harabasz={calinski_harabasz_score(Z, kmeans.labels_):.0f}')
     return kmeans.labels_.reshape(M,N)
 
 # find_limit
