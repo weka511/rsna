@@ -25,7 +25,7 @@ from colorsys          import hsv_to_rgb
 from math              import isqrt
 from matplotlib.pyplot import close, figure, legend, plot, savefig, show, suptitle
 from mri3d             import ImagePlane, MRI_Dataset, MRI_Geometry
-from numpy             import argmax, convolve, count_nonzero, mean, ones, std, zeros
+from numpy             import argmax, convolve, count_nonzero, full, maximum, mean, ones, std, zeros
 from os.path           import join
 from scipy.stats       import tmean
 from skimage.color     import rgb2lab
@@ -122,23 +122,22 @@ def detect_slice_range(series,half_width=8):
     return is_left, means, averages,stds,index_max
 
 def segment(dcim,K=10,K2=2):
-    rgb    = get_pseudocolour(dcim.pixel_array)
-    Lab    = rgb2lab(rgb)
-    Labels = cluster(Lab,K=K)
-    M,N    = Labels.shape
-
-    LuminosityClusters = []
-    for k in range(K):
-        Luminosities = zeros((M,N))
+    def luminosity_cluster(k):
+        Luminosities = full((M,N),-1)
         for i in range(M):
             for j in range(N):
                 if Labels[i,j]==k:
                     Luminosities[i,j] = Lab[i,j,0]
 
         kmeans = KMeans(n_clusters=K2, random_state=0).fit(Luminosities.reshape(M*N,1))
-        LuminosityClusters.append(kmeans.labels_.reshape(M,N))
+        return maximum(kmeans.labels_.reshape(M,N),zeros((M,N)))
 
-    return rgb, Lab, Labels, LuminosityClusters
+    rgb    = get_pseudocolour(dcim.pixel_array)
+    Lab    = rgb2lab(rgb)
+    Labels = cluster(Lab,K=K)
+    M,N    = Labels.shape
+
+    return rgb, Lab, Labels, [luminosity_cluster(k) for k in range(K)]
 
 # partition_figure
 def partition_figure(total_cells):
