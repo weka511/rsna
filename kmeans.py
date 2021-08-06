@@ -121,11 +121,24 @@ def detect_slice_range(series,half_width=8):
     index_max = argmax(averages)
     return is_left, means, averages,stds,index_max
 
-def segment(dcim,K=10):
-    rgb         = get_pseudocolour(dcim.pixel_array)
-    Lab         = rgb2lab(rgb)
-    Labels      = cluster(Lab,K=K)
-    return rgb, Lab, Labels
+def segment(dcim,K=10,K2=2):
+    rgb    = get_pseudocolour(dcim.pixel_array)
+    Lab    = rgb2lab(rgb)
+    Labels = cluster(Lab,K=K)
+    M,N    = Labels.shape
+
+    LuminosityClusters = []
+    for k in range(K):
+        Luminosities = zeros((M,N))
+        for i in range(M):
+            for j in range(N):
+                if Labels[i,j]==k:
+                    Luminosities[i,j] = Lab[i,j,0]
+
+        kmeans = KMeans(n_clusters=K2, random_state=0).fit(Luminosities.reshape(M*N,1))
+        LuminosityClusters.append(kmeans.labels_.reshape(M,N))
+
+    return rgb, Lab, Labels, LuminosityClusters
 
 # partition_figure
 def partition_figure(total_cells):
@@ -210,7 +223,8 @@ if __name__=='__main__':
         print (f'Slices: {slices}')
         for seq in slices:
             for series in study.get_series(types=[args.modality]):
-                rgb, Lab, Labels = segment(series[seq],K=args.K)
+                rgb, Lab, Labels,LuminosityClusters = segment(series[seq],K=args.K,K2=3)
+
                 fig = figure(figsize=(20,20))
                 ax1 = fig.add_subplot(2,2,1)
                 ax1.imshow(series[seq].pixel_array,cmap='gray')
@@ -225,7 +239,7 @@ if __name__=='__main__':
                 M,N = Labels.shape
 
                 detailed = not args.summary
-                for k,axes in enumerate(get_axes(detailed=detailed,columns=args.K,show=args.show)):
+                for k,axes in enumerate(get_axes(detailed=detailed,columns=args.K,show=args.show,rows=2+3)): #FIXME
                     Luminosities = []
                     blanks = zeros((M,N))
                     for i in range(M):
@@ -241,8 +255,20 @@ if __name__=='__main__':
                     axes[1].hist(Luminosities,bins=50)
                     if detailed or k==0:
                         axes[1].set_ylabel('Luminosities')
+
+                    Luminosity = LuminosityClusters[k]
+                    for kk in range(3): #FIXME
+                        img = zeros((M,N))
+                        for i in range(M):
+                            for j in range(N):
+                                if Luminosity[i,j]==kk:
+                                    img[i,j]=1.0
+                        axes[2+kk].imshow(img)
                     if detailed or k==args.K-1:
-                        savefig(join(args.figs,f'{study}-{args.modality}-{seq}-{k}'),dpi=250) #FIXME
+                        savefig(join(args.figs,f'{study}-{args.modality}-{seq}-{k}'))
+
+
+
 
             fig = figure(figsize=(20,20))
             ax1 = fig.add_subplot(2,2,1)
