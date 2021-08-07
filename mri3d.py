@@ -135,7 +135,7 @@ class Study:
         #
         # Retrieve image
         def __getitem__(self,i):
-            return  dcmread(join(self.dirpath,f'Image-{i}.dcm')) #FIXME - shoudl use seg
+            return  dcmread(join(self.dirpath,f'Image-{i}.dcm')) #FIXME - should use seg
 
         # __len__
         #
