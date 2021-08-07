@@ -188,6 +188,8 @@ def segment(dcim,K=10,K2=2):
 # partition_figure
 #
 # Used to organize a figure into subplots, arranged in a rectangle that is as close to a square as possible
+# Rectangle will grow in horizontal direction if necessary
+
 def partition_figure(total_cells):
     m = isqrt(total_cells)
     n = total_cells//m
@@ -212,19 +214,20 @@ def get_axes(width=20,height=20,detailed=False,rows=2,columns=1,show=False):
 
 if __name__=='__main__':
     parser = ArgumentParser('Segment using kmeans and false colours')
-    parser.add_argument('actions',      choices=['slice', 'kmeans'], nargs='+')
+    parser.add_argument('actions',      choices=['slice', 'kmeans'], nargs='+', help = '')
     parser.add_argument('--path',       default = r'D:\data\rsna',              help = 'Path for data')
     parser.add_argument('--figs',       default = './figs',                     help = 'Path to store plots')
     parser.add_argument('--show',       default = False, action = 'store_true', help = 'Set if plots are to be displayed')
     parser.add_argument('--study',      default = '00098',                      help = 'Name of Studies to be processed' )
-    parser.add_argument('--window',     default = 8,  type=int,                 help = 'Window will lead and trail by this amount')
-    parser.add_argument('--slices',     default = [], type=int, nargs = '+')
-    parser.add_argument('--K',          default = 10,  type=int,                help = 'Number of clusters for kMeans')
-    parser.add_argument('--K2',         default = 3,   type=int,                help = 'Number of clusters for kMeans')
-    parser.add_argument('--cutoff',     default = 0.95, type=float)
-    parser.add_argument('--test',       default = False, action = 'store_true')
-    parser.add_argument('--modality',   default = 'FLAIR')
-    parser.add_argument('--summary',    default = False, action = 'store_true')
+    parser.add_argument('--window',     default = 8,     type=int,              help = 'Window will lead and trail by this amount')
+    parser.add_argument('--slices',     default = [],    type=int, nargs = '+', help='Slices to be processed if "kmeans" specified without "slice"')
+    parser.add_argument('--K',          default = 10,    type=int,              help = 'Number of clusters for *a*b')
+    parser.add_argument('--K2',         default = 3,     type=int,              help = 'Number of clusters for L')
+    parser.add_argument('--cutoff',     default = 0.95,  type=float,            help = '')
+    parser.add_argument('--test',       default = False, action = 'store_true', help = '')
+    parser.add_argument('--modality',   default = 'FLAIR',                      help = '')
+    parser.add_argument('--summary',    default = False, action = 'store_true', help = '')
+    parser.add_argument('--cmap',       default = 'viridis',                      help = '')
     args       = parser.parse_args()
 
     dataset    = MRI_Dataset(args.path,
@@ -237,32 +240,41 @@ if __name__=='__main__':
             print (study,series.description)
             verify_axial(series)
             is_left, means, averages,stds,index_max = detect_slice_range(series,half_width=args.window)
+            index_first_slice                       = find_limit(index_max,averages,cutoff=args.cutoff,direction=-1)
+            index_last_slice                        = find_limit(index_max,averages,cutoff=args.cutoff,direction=+1)
+            slices                                  = [series.seqs[i] for i in range(index_first_slice,index_last_slice+1)]
+
             fig = figure(figsize=(20,20))
-            suptitle(args.study)
-            ax1 = fig.add_subplot(2,1,1)
-            ax1.plot(means[args.window:], label='means',color='xkcd:blue')
-            ax1.plot(averages, label='averages',color='xkcd:red')
-            ax1.legend()
-            ax2 = fig.add_subplot(2,1,2)
-            ax2.plot(stds, label='running std',color='xkcd:red')
+            ax = fig.add_subplot(1,1,1)
+            ax.plot(means[args.window:], label='means',color='xkcd:blue')
+            ax.plot(averages, label='averages',color='xkcd:red')
+            ax.plot(stds, label='std',color='xkcd:blue',linestyle='--')
+            ax.plot(list(range(index_first_slice,index_last_slice)),
+                    [averages[index_max]*args.cutoff for i in range(index_first_slice,index_last_slice)],
+                    label     = 'slices of interest',
+                    color     = 'xkcd:red',
+                    linestyle = ':')
+            ax.legend()
+            suptitle(f'Study: {args.study}, peak at {index_max}--slice {series.seqs[index_max]}')
             savefig(join(args.figs,f'{study}-{args.modality}-average-intensity'))
-            ax2.legend()
+
             if not args.show:
                 close(fig)
-            i0     = find_limit(index_max,averages,cutoff=args.cutoff,direction=-1)
-            i1     = find_limit(index_max,averages,cutoff=args.cutoff,direction=+1)
-            slices = [series.seqs[i] for i in range(i0,i1+1)]
 
             m,n    = partition_figure(len(slices))
             fig    = figure(figsize=(20,20))
-            suptitle(f'{args.study} {"Left" if is_left else "Right"}')
+
             for i in range(len(slices)):
                 try:
-                    ax2 = fig.add_subplot(m,n,i+1)
-                    ax2.imshow(series[slices[i]].pixel_array,cmap='gray')
-                    ax2.set_title(slices[i])
+                    ax = fig.add_subplot(m,n,i+1)
+                    ax.imshow(series[slices[i]].pixel_array,cmap=args.cmap)
+                    ax.set_title(slices[i])
+                    ax.get_xaxis().set_visible(False)
+                    ax.get_yaxis().set_visible(False)
                 except IndexError:
                     break
+
+            suptitle(f'Study: {args.study} slices of interest for tumour in {"Left" if is_left else "Right"} hemisphere')
             savefig(join(args.figs,f'{study}-{args.modality}-slices'))
             if not args.show:
                 close(fig)
@@ -313,10 +325,10 @@ if __name__=='__main__':
                     if detailed or k==args.K-1:
                         savefig(join(args.figs,f'{study}-{args.modality}-{seq}-{k}'))
 
-            fig = figure(figsize=(20,20))
-            ax1 = fig.add_subplot(2,2,1)
+            fig      = figure(figsize=(20,20))
+            ax1      = fig.add_subplot(2,2,1)
             ax1.imshow(Labels, cmap='coolwarm', interpolation='nearest')
-            ax2 = fig.add_subplot(2,2,2)
+            ax2      = fig.add_subplot(2,2,2)
             n,bins,_ = ax2.hist(Lab[:,:,0].flatten(),bins=256)
             ax2.set_xlabel('Luminosity')
             savefig(join(args.figs,f'{study}-{args.modality}-final'))
