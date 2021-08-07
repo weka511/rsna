@@ -19,11 +19,23 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
 #
-# References Wu et al
-#            Eltayeb et al
+# Segment brain tumours using kmeans and false colours
+#
+# References:
+#            Wu, M.-N.; Lin, C.-C. & Chang, C.-C.
+#            Brain Tumor Detection Using Color-Based K-Means Clustering Segmentation
+#            IEEE Comput Soc, 2007, 2, 245-250
+#
+#            Eltayeb, E.; Salem, N. & Al-Atabany, W.
+#            Automated brain tumor segmentation from multi-slices FLAIR MRI images
+#            Bio-Medical Materials and Engineering, 2019, 30, 1-13
+#
+#            Mouzakitis, N.
+#            Brain tumor detection using Kmeans and histogram
+#            2021
 #            https://github.com/NikosMouzakitis/Brain-tumor-detection-using-Kmeans-and-histogram/
+
 from argparse          import ArgumentParser
 from colorsys          import hsv_to_rgb
 from math              import isqrt
@@ -213,21 +225,21 @@ def get_axes(width=20,height=20,detailed=False,rows=2,columns=1,show=False):
             close(fig)
 
 if __name__=='__main__':
-    parser = ArgumentParser('Segment using kmeans and false colours')
-    parser.add_argument('actions',      choices=['slice', 'kmeans'], nargs='+', help = '')
+    parser = ArgumentParser('Segment brain tumours using kmeans and false colours')
+    parser.add_argument('actions',      choices=['slice', 'kmeans'], nargs='+', help = 'List of actions: identify slices; segment using kmeans')
     parser.add_argument('--path',       default = r'D:\data\rsna',              help = 'Path for data')
     parser.add_argument('--figs',       default = './figs',                     help = 'Path to store plots')
     parser.add_argument('--show',       default = False, action = 'store_true', help = 'Set if plots are to be displayed')
     parser.add_argument('--study',      default = '00098',                      help = 'Name of Studies to be processed' )
     parser.add_argument('--window',     default = 8,     type=int,              help = 'Window will lead and trail by this amount')
-    parser.add_argument('--slices',     default = [],    type=int, nargs = '+', help='Slices to be processed if "kmeans" specified without "slice"')
+    parser.add_argument('--slices',     default = [],    type=int, nargs = '+', help = 'Slices to be processed if "kmeans" specified without "slice"')
     parser.add_argument('--K',          default = 10,    type=int,              help = 'Number of clusters for *a*b')
     parser.add_argument('--K2',         default = 3,     type=int,              help = 'Number of clusters for L')
-    parser.add_argument('--cutoff',     default = 0.95,  type=float,            help = '')
-    parser.add_argument('--test',       default = False, action = 'store_true', help = '')
-    parser.add_argument('--modality',   default = 'FLAIR',                      help = '')
-    parser.add_argument('--summary',    default = False, action = 'store_true', help = '')
-    parser.add_argument('--cmap',       default = 'viridis',                      help = '')
+    parser.add_argument('--cutoff',     default = 0.95,  type=float,            help = 'Determines which slices should be processed if "slice"')
+    parser.add_argument('--test',       default = False, action = 'store_true', help = 'Use test or tarn data')
+    parser.add_argument('--modality',   default = 'FLAIR',                      help = 'Modality to be used')
+    parser.add_argument('--summary',    default = False, action = 'store_true', help = 'One summary plot for all clusters?')
+    parser.add_argument('--cmap',       default = 'viridis',                    help = 'To use for greyscale images')
     args       = parser.parse_args()
 
     dataset    = MRI_Dataset(args.path,
