@@ -20,19 +20,27 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+#
+# References Wu et al
+#            Eltayeb et al
+#            https://github.com/NikosMouzakitis/Brain-tumor-detection-using-Kmeans-and-histogram/
 from argparse          import ArgumentParser
 from colorsys          import hsv_to_rgb
 from math              import isqrt
 from matplotlib.pyplot import close, figure, legend, plot, savefig, show, suptitle
 from mri3d             import ImagePlane, MRI_Dataset, MRI_Geometry
-from numpy             import argmax, convolve, count_nonzero, full, maximum, mean, ones, std, zeros
+from numpy             import argmax, asarray, convolve, count_nonzero, full, maximum, mean,  ones, std, where, zeros
 from os.path           import join
 from scipy.stats       import tmean
 from skimage.color     import rgb2lab
 from sklearn.cluster   import KMeans
 from sklearn.metrics   import calinski_harabasz_score
+from warnings          import warn
 
 # get_mean_intensities
+#
+# Used to compute mean of intensities in specified hemisphere
+# Eltayeb et al, figure 3
 
 def get_mean_intensities(dcims,is_left,L,include_zeros=True):
     def get_mean(pixels):
@@ -48,6 +56,7 @@ def get_mean_intensities(dcims,is_left,L,include_zeros=True):
 # get_running_averages
 #
 # Calculate a running average
+# Eltayeb et al, figure 3
 #
 # https://stackoverflow.com/questions/13728392/moving-average-or-running-mean
 
@@ -65,7 +74,8 @@ def verify_axial(series):
 
 
 # determine_hemisphere
-
+#
+# Following Eltayeb et al, determine which hemisphere has largest srea under curve
 def determine_hemisphere(series):
     Area1 = 0
     Area2 = 0
@@ -80,12 +90,35 @@ def determine_hemisphere(series):
 
 # get_pseudocolour
 #
-# It isn't clear exactly how Wu et al do this, but I have adapted code that I found at
+# Wu et al speak of the "standard RGB colour map", but it isn't clear to me whar this is.
+# I have adapted code that I found at
 # https://github.com/NikosMouzakitis/Brain-tumor-detection-using-Kmeans-and-histogram
+#
+# I have inspected the code for hsv_to_rsv and observed that parameter 'v' is
+# is always included in one position in every return statement.
+#        def hsv_to_rgb(h, s, v):
+#           ...
+#                return v, v, v
+#           ...
+#                return v, t, p
+#            ...
+#                return q, v, p
+#            ...
+#                return p, v, t
+#           ...
+#                return p, q, v
+#            ...
+#                return t, p, v
+#            ...
+#               return v, p, q
+# Conclusion: since v=1 in get_pseudocolour(...), hsv_to_rgb never returns (0,0,0),
+#             whence get_pseudocolour(...) never returns (0,0,0) unless pixel_array is zero
+
 def get_pseudocolour(pixel_array):
     M,N    = pixel_array.shape
     rgb    = zeros((M,N,3))
     maxval = pixel_array.max()
+
     for i in range(M):
         for j in range(N):
             if pixel_array[i,j]>0:
@@ -93,9 +126,12 @@ def get_pseudocolour(pixel_array):
 
     return rgb
 
-# cluster
 
-# https://github.com/NikosMouzakitis/Brain-tumor-detection-using-Kmeans-and-histogram/
+# cluster
+#
+# Perform clustering on a,b from L*a*b
+#
+# See https://github.com/NikosMouzakitis/Brain-tumor-detection-using-Kmeans-and-histogram/
 def cluster(Lab,K = 10):
     M,N,_  = Lab.shape
     Z      = Lab[:,:,1:3].reshape(M*N,2)
@@ -104,12 +140,23 @@ def cluster(Lab,K = 10):
     return kmeans.labels_.reshape(M,N)
 
 # find_limit
+#
+# Given the index of the peak, search back or forward to determine the limits
+# of the slices where tumpor is likely to be
 
-def find_limit(index_max,cutoff,averages,direction=+1):
+def find_limit(index_max,averages,cutoff=0.95,direction=+1):
     index = index_max
-    while index > 0 and index < len(averages) and averages[index]/averages[index_max]>cutoff:
-        index += direction
+    try:
+        while averages[index]/averages[index_max]>cutoff:
+            index += direction
+    except IndexError:
+        warn(f'Ran off end: index={index}. Stepping back.')
+        index -= direction
     return index
+
+# detect_slice_range
+#
+# Search through the average maeans of Intensity (Eltayeb et al) to establish the index of the peak value
 
 def detect_slice_range(series,half_width=8):
     is_left,L = determine_hemisphere(series)
@@ -118,18 +165,17 @@ def detect_slice_range(series,half_width=8):
     m         = 2*half_width+1
     averages  = [0]*half_width + [mean(means[i:i+m+1]) for i in range(len(means)-m)]
     stds      = [0]*half_width + [std(means[i:i+m+1]) for i in range(len(means)-m)]
-    index_max = argmax(averages)
-    return is_left, means, averages,stds,index_max
+    return is_left, means, averages,stds,argmax(averages)
+
+# segment
+#
+# Cluster on a,b from L*a*b values, the split each cluster further by reclustering on L
 
 def segment(dcim,K=10,K2=2):
     def luminosity_cluster(k):
-        Luminosities = full((M,N),-1)
-        for i in range(M):
-            for j in range(N):
-                if Labels[i,j]==k:
-                    Luminosities[i,j] = Lab[i,j,0]
-
-        kmeans = KMeans(n_clusters=K2, random_state=0).fit(Luminosities.reshape(M*N,1))
+        Mask         = where(Labels==k,Labels,zeros((M,N)))
+        Luminosities = where(Mask==k,Lab[:,:,0],full((M,N),-1))
+        kmeans       = KMeans(n_clusters=K2, random_state=0).fit(Luminosities.reshape(M*N,1))
         return maximum(kmeans.labels_.reshape(M,N),zeros((M,N)))
 
     rgb    = get_pseudocolour(dcim.pixel_array)
@@ -140,6 +186,8 @@ def segment(dcim,K=10,K2=2):
     return rgb, Lab, Labels, [luminosity_cluster(k) for k in range(K)]
 
 # partition_figure
+#
+# Used to organize a figure into subplots, arranged in a rectangle that is as close to a square as possible
 def partition_figure(total_cells):
     m = isqrt(total_cells)
     n = total_cells//m
@@ -172,6 +220,7 @@ if __name__=='__main__':
     parser.add_argument('--window',     default = 8,  type=int,                 help = 'Window will lead and trail by this amount')
     parser.add_argument('--slices',     default = [], type=int, nargs = '+')
     parser.add_argument('--K',          default = 10,  type=int,                help = 'Number of clusters for kMeans')
+    parser.add_argument('--K2',         default = 3,   type=int,                help = 'Number of clusters for kMeans')
     parser.add_argument('--cutoff',     default = 0.95, type=float)
     parser.add_argument('--test',       default = False, action = 'store_true')
     parser.add_argument('--modality',   default = 'FLAIR')
@@ -200,8 +249,8 @@ if __name__=='__main__':
             ax2.legend()
             if not args.show:
                 close(fig)
-            i0     = find_limit(index_max,args.cutoff,averages,direction=-1)
-            i1     = find_limit(index_max,args.cutoff,averages,direction=+1)
+            i0     = find_limit(index_max,averages,cutoff=args.cutoff,direction=-1)
+            i1     = find_limit(index_max,averages,cutoff=args.cutoff,direction=+1)
             slices = [series.seqs[i] for i in range(i0,i1+1)]
 
             m,n    = partition_figure(len(slices))
@@ -222,7 +271,7 @@ if __name__=='__main__':
         print (f'Slices: {slices}')
         for seq in slices:
             for series in study.get_series(types=[args.modality]):
-                rgb, Lab, Labels,LuminosityClusters = segment(series[seq],K=args.K,K2=3)
+                rgb, Lab, Labels,LuminosityClusters = segment(series[seq],K=args.K,K2=args.K2)
 
                 fig = figure(figsize=(20,20))
                 ax1 = fig.add_subplot(2,2,1)
@@ -238,7 +287,7 @@ if __name__=='__main__':
                 M,N = Labels.shape
 
                 detailed = not args.summary
-                for k,axes in enumerate(get_axes(detailed=detailed,columns=args.K,show=args.show,rows=2+3)): #FIXME
+                for k,axes in enumerate(get_axes(detailed=detailed,columns=args.K,show=args.show,rows=2+args.K2)):
                     Luminosities = []
                     blanks = zeros((M,N))
                     for i in range(M):
@@ -256,18 +305,13 @@ if __name__=='__main__':
                         axes[1].set_ylabel('Luminosities')
 
                     Luminosity = LuminosityClusters[k]
-                    for kk in range(3): #FIXME
-                        img = zeros((M,N))
-                        for i in range(M):
-                            for j in range(N):
-                                if Luminosity[i,j]==kk:
-                                    img[i,j]=1.0
-                        axes[2+kk].imshow(img)
+                    for kk in range(args.K2):
+                        Mask = where(Labels==kk,Labels,zeros((M,N)))
+                        img  = where(Mask==kk,Luminosity[:,:],zeros((M,N)))
+                        axes[2+kk].imshow(img,vmin=0,vmax=img.max())
+                        axes[2+kk].set_ylabel(f'{img.min()} {img.max()}')
                     if detailed or k==args.K-1:
                         savefig(join(args.figs,f'{study}-{args.modality}-{seq}-{k}'))
-
-
-
 
             fig = figure(figsize=(20,20))
             ax1 = fig.add_subplot(2,2,1)
