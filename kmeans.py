@@ -41,9 +41,9 @@ from colorsys          import hsv_to_rgb
 from math              import isqrt
 from matplotlib.pyplot import close, figure, legend, plot, savefig, show, suptitle
 from mri3d             import ImagePlane, MRI_Dataset, MRI_Geometry
-from numpy             import argmax, asarray, convolve, count_nonzero, full, maximum, mean,  ones, std, where, zeros
+from numpy             import argmax, asarray, convolve, count_nonzero, full, histogram, maximum, mean,  ones, std, where, zeros
 from os.path           import join
-from scipy.stats       import tmean
+from scipy.stats       import entropy, tmean
 from skimage.color     import rgb2lab
 from sklearn.cluster   import KMeans
 from sklearn.metrics   import calinski_harabasz_score
@@ -128,7 +128,7 @@ def determine_hemisphere(series):
 
 def get_pseudocolour(pixel_array):
     M,N    = pixel_array.shape
-    rgb    = zeros((M,N,3))
+    rgb    = zeros((M,N,3))   # Initialize so that hsv==0 -> rgb==(0,0,0)
     maxval = pixel_array.max()
 
     for i in range(M):
@@ -168,16 +168,17 @@ def find_limit(index_max,averages,cutoff=0.95,direction=+1):
 
 # detect_slice_range
 #
-# Search through the average maeans of Intensity (Eltayeb et al) to establish the index of the peak value
+# Search through the average means of Intensity (Eltayeb et al) to establish the index of the peak value
 
-def detect_slice_range(series,half_width=8):
+def detect_slice_range(series,half_width=8, bins=256):
     is_left,L = determine_hemisphere(series)
-    dcim      = series.dcmread()
-    means     = get_mean_intensities(dcim,is_left,L)
+    means     = get_mean_intensities(series.dcmread(),is_left,L)
     m         = 2*half_width+1
-    averages  = [0]*half_width + [mean(means[i:i+m+1]) for i in range(len(means)-m)]
-    stds      = [0]*half_width + [std(means[i:i+m+1]) for i in range(len(means)-m)]
-    return is_left, means, averages,stds,argmax(averages)
+    averages  = [0]*(half_width+1) + [mean(means[i:i+m+1]) for i in range(len(means)-m)]
+    stds      = [0]*(half_width+1) + [std(means[i:i+m+1]) for i in range(len(means)-m)]
+    H         = [entropy(histogram(dcim.pixel_array,bins=bins)[0]) for dcim in series.dcmread()]
+    i,j,k = len(means),len(averages),len(H)
+    return is_left, means, averages,stds,argmax(averages),H
 
 # segment
 #
@@ -251,23 +252,42 @@ if __name__=='__main__':
         for series in study.get_series(types=[args.modality]):
             print (study,series.description)
             verify_axial(series)
-            is_left, means, averages,stds,index_max = detect_slice_range(series,half_width=args.window)
-            index_first_slice                       = find_limit(index_max,averages,cutoff=args.cutoff,direction=-1)
-            index_last_slice                        = find_limit(index_max,averages,cutoff=args.cutoff,direction=+1)
-            slices                                  = [series.seqs[i] for i in range(index_first_slice,index_last_slice+1)]
-
+            is_left, means, averages,stds,index_max,H = detect_slice_range(series,half_width=args.window)
+            index_first_slice                         = find_limit(index_max,averages,cutoff=args.cutoff,direction=-1)
+            index_last_slice                          = find_limit(index_max,averages,cutoff=args.cutoff,direction=+1)
+            slices                                    = [series.seqs[i] for i in range(index_first_slice,index_last_slice+1)]
+            index_max_entropy                         = argmax(H)
             fig = figure(figsize=(20,20))
-            ax = fig.add_subplot(1,1,1)
-            ax.plot(means[args.window:], label='means',color='xkcd:blue')
-            ax.plot(averages, label='averages',color='xkcd:red')
-            ax.plot(stds, label='std',color='xkcd:blue',linestyle='--')
-            ax.plot(list(range(index_first_slice,index_last_slice)),
+            ax1 = fig.add_subplot(1,1,1)
+            ax1.plot([series.seqs[i] for i in range(len(means))],
+                     means,
+                     label = 'means',
+                     color = 'xkcd:blue')
+            ax1.plot([series.seqs[i] for i in range(len(averages))],
+                     averages,
+                     label = f'averages: peak at slice {series.seqs[index_max]}',
+                     color = 'xkcd:red')
+            ax1.plot([series.seqs[i] for i in range(len(stds))],
+                     stds,
+                     label     = 'std',
+                     color     = 'xkcd:blue',
+                     linestyle = '--')
+            ax1.plot([series.seqs[i] for i in range(index_first_slice,index_last_slice)],
                     [averages[index_max]*args.cutoff for i in range(index_first_slice,index_last_slice)],
                     label     = 'slices of interest',
                     color     = 'xkcd:red',
                     linestyle = ':')
-            ax.legend()
-            suptitle(f'Study: {args.study}, peak at {index_max}--slice {series.seqs[index_max]}')
+            ax1.set_xlabel('Slice')
+            ax1.set_ylabel('Intensity')
+            ax1.legend(loc='upper left',title='Intensities')
+
+            ax2 = ax1.twinx()
+            ax2.plot([series.seqs[i] for i in range(len(means))],H,
+                    label = f'Entropy: peak at slice {series.seqs[index_max_entropy]}',
+                    color   = 'xkcd:aquamarine')
+            ax2.set_ylabel('Entropy', color   = 'xkcd:aquamarine')
+            ax2.legend(loc='upper right')
+            suptitle(f'Study: {args.study}, range = {series.seqs[index_first_slice]}-{series.seqs[index_last_slice]}')
             savefig(join(args.figs,f'{study}-{args.modality}-average-intensity'))
 
             if not args.show:
