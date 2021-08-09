@@ -36,18 +36,19 @@
 #            2021
 #            https://github.com/NikosMouzakitis/Brain-tumor-detection-using-Kmeans-and-histogram/
 
-from argparse          import ArgumentParser
-from colorsys          import hsv_to_rgb
-from math              import isqrt
-from matplotlib.pyplot import close, figure, legend, plot, savefig, show, suptitle
-from mri3d             import ImagePlane, MRI_Dataset, MRI_Geometry
-from numpy             import argmax, asarray, convolve, count_nonzero, full, histogram, maximum, mean,  ones, std, where, zeros
-from os.path           import join
-from scipy.stats       import entropy, tmean
-from skimage.color     import rgb2lab
-from sklearn.cluster   import KMeans
-from sklearn.metrics   import calinski_harabasz_score
-from warnings          import warn
+from argparse               import ArgumentParser
+from colorsys               import hsv_to_rgb
+from math                   import isqrt
+from matplotlib.pyplot      import close, figure, legend, plot, savefig, show, suptitle
+from medpy.filter.smoothing import anisotropic_diffusion
+from mri3d                  import ImagePlane, MRI_Dataset, MRI_Geometry
+from numpy                  import argmax, asarray, convolve, count_nonzero, full, histogram, maximum, mean,  ones, std, where, zeros
+from os.path                import join
+from scipy.stats            import entropy, tmean
+from skimage.color          import rgb2lab
+from sklearn.cluster        import KMeans
+from sklearn.metrics        import calinski_harabasz_score
+from warnings               import warn
 
 # get_mean_intensities
 #
@@ -184,14 +185,17 @@ def detect_slice_range(series,half_width=8, bins=256):
 #
 # Cluster on a,b from L*a*b values, the split each cluster further by reclustering on L
 
-def segment(dcim,K=10,K2=2):
+def segment(dcim,
+            K             = 10,
+            K2            = 2,
+            should_filter = True):
     def luminosity_cluster(k):
         Mask         = where(Labels==k,Labels,zeros((M,N)))
         Luminosities = where(Mask==k,Lab[:,:,0],full((M,N),-1))
         kmeans       = KMeans(n_clusters=K2, random_state=0).fit(Luminosities.reshape(M*N,1))
         return maximum(kmeans.labels_.reshape(M,N),zeros((M,N)))
 
-    rgb    = get_pseudocolour(dcim.pixel_array)
+    rgb    = get_pseudocolour(anisotropic_diffusion(dcim.pixel_array) if should_filter else dcim.pixel_array)
     Lab    = rgb2lab(rgb)
     Labels = cluster(Lab,K=K)
     M,N    = Labels.shape
@@ -237,10 +241,12 @@ if __name__=='__main__':
     parser.add_argument('--K',          default = 10,    type=int,              help = 'Number of clusters for *a*b')
     parser.add_argument('--K2',         default = 3,     type=int,              help = 'Number of clusters for L')
     parser.add_argument('--cutoff',     default = 0.95,  type=float,            help = 'Determines which slices should be processed if "slice"')
+    parser.add_argument('--nslices2',   default = 10,    type=int)
     parser.add_argument('--test',       default = False, action = 'store_true', help = 'Use test or tarn data')
     parser.add_argument('--modality',   default = 'FLAIR',                      help = 'Modality to be used')
     parser.add_argument('--summary',    default = False, action = 'store_true', help = 'One summary plot for all clusters?')
     parser.add_argument('--cmap',       default = 'viridis',                    help = 'To use for greyscale images')
+    parser.add_argument('--filter',     default = False, action = 'store_true', help = 'Apply anisotropic filtering')
     args       = parser.parse_args()
 
     dataset    = MRI_Dataset(args.path,
@@ -253,16 +259,21 @@ if __name__=='__main__':
             print (study,series.description)
             verify_axial(series)
             is_left, means, averages,stds,index_max,H = detect_slice_range(series,half_width=args.window)
-            index_first_slice                         = find_limit(index_max,averages,cutoff=args.cutoff,direction=-1)
-            index_last_slice                          = find_limit(index_max,averages,cutoff=args.cutoff,direction=+1)
-            slices                                    = [series.seqs[i] for i in range(index_first_slice,index_last_slice+1)]
             index_max_entropy                         = argmax(H)
+            index_first_slice                         = min(index_max, index_max_entropy)# find_limit(index_max,averages,cutoff=args.cutoff,direction=-1)
+            index_last_slice                          = max(index_max, index_max_entropy)#find_limit(index_max,averages,cutoff=args.cutoff,direction=+1)
+            while index_last_slice-index_first_slice<2*args.nslices2:
+                index_first_slice-=1
+                index_last_slice+=1
+            slices                                    = [series.seqs[i] for i in range(index_first_slice,index_last_slice+1)]
+
             fig = figure(figsize=(20,20))
             ax1 = fig.add_subplot(1,1,1)
             ax1.plot([series.seqs[i] for i in range(len(means))],
                      means,
-                     label = 'means',
-                     color = 'xkcd:blue')
+                     label     = 'means',
+                     color     = 'xkcd:blue',
+                     linestyle = ':')
             ax1.plot([series.seqs[i] for i in range(len(averages))],
                      averages,
                      label = f'averages: peak at slice {series.seqs[index_max]}',
@@ -272,11 +283,11 @@ if __name__=='__main__':
                      label     = 'std',
                      color     = 'xkcd:blue',
                      linestyle = '--')
-            ax1.plot([series.seqs[i] for i in range(index_first_slice,index_last_slice)],
-                    [averages[index_max]*args.cutoff for i in range(index_first_slice,index_last_slice)],
-                    label     = 'slices of interest',
-                    color     = 'xkcd:red',
-                    linestyle = ':')
+            ax1.axvspan(series.seqs[index_first_slice],series.seqs[index_last_slice],
+                        facecolor = 'xkcd:olive green',
+                        alpha     = 0.5,
+                        hatch     = '/',
+                        label     = 'slices of interest')
             ax1.set_xlabel('Slice')
             ax1.set_ylabel('Intensity')
             ax1.legend(loc='upper left',title='Intensities')
@@ -284,7 +295,7 @@ if __name__=='__main__':
             ax2 = ax1.twinx()
             ax2.plot([series.seqs[i] for i in range(len(means))],H,
                     label = f'Entropy: peak at slice {series.seqs[index_max_entropy]}',
-                    color   = 'xkcd:aquamarine')
+                    color = 'xkcd:aquamarine')
             ax2.set_ylabel('Entropy', color   = 'xkcd:aquamarine')
             ax2.legend(loc='upper right')
             suptitle(f'Study: {args.study}, range = {series.seqs[index_first_slice]}-{series.seqs[index_last_slice]}')
@@ -293,8 +304,8 @@ if __name__=='__main__':
             if not args.show:
                 close(fig)
 
-            m,n    = partition_figure(len(slices))
             fig    = figure(figsize=(20,20))
+            m,n    = partition_figure(len(slices))
 
             for i in range(len(slices)):
                 try:
@@ -308,6 +319,7 @@ if __name__=='__main__':
 
             suptitle(f'Study: {args.study} slices of interest for tumour in {"Left" if is_left else "Right"} hemisphere')
             savefig(join(args.figs,f'{study}-{args.modality}-slices'))
+
             if not args.show:
                 close(fig)
 
@@ -315,19 +327,34 @@ if __name__=='__main__':
         print (f'Slices: {slices}')
         for seq in slices:
             for series in study.get_series(types=[args.modality]):
-                rgb, Lab, Labels,LuminosityClusters = segment(series[seq],K=args.K,K2=args.K2)
-
+                rgb, Lab, Labels,LuminosityClusters = segment(series[seq],
+                                                              K             = args.K,
+                                                              K2            = args.K2,
+                                                              should_filter = args.filter)
                 fig = figure(figsize=(20,20))
+
                 ax1 = fig.add_subplot(2,2,1)
-                ax1.imshow(series[seq].pixel_array,cmap='gray')
+                ax1.imshow(series[seq].pixel_array,cmap=args.cmap)
+                ax1.set_title('Raw')
+
                 ax2 = fig.add_subplot(2,2,2)
-                ax2.imshow(rgb)
+                ax2.imshow(anisotropic_diffusion(series[seq].pixel_array),cmap=args.cmap)
+                ax2.set_title('Anisotropic Filter')
+
                 ax3 = fig.add_subplot(2,2,3)
-                ax3.imshow(Lab)
+                ax3.imshow(rgb)
+                ax3.set_title('RGB')
+
+                ax4 = fig.add_subplot(2,2,4)
+                ax4.imshow(Lab)
+                ax4.set_title('L*a*b')
+
                 suptitle(f'{args.study} {seq}')
-                savefig(join(args.figs,f'{study}-{args.modality}-image'))
+                savefig(join(args.figs,f'{study}-{args.modality}-image-{seq}'))
+
                 if not args.show:
                     close(fig)
+
                 M,N = Labels.shape
 
                 detailed = not args.summary
@@ -363,7 +390,7 @@ if __name__=='__main__':
             ax2      = fig.add_subplot(2,2,2)
             n,bins,_ = ax2.hist(Lab[:,:,0].flatten(),bins=256)
             ax2.set_xlabel('Luminosity')
-            savefig(join(args.figs,f'{study}-{args.modality}-final'))
+            savefig(join(args.figs,f'{study}-{args.modality}-final-{seq}'))
             if not args.show:
                 close(fig)
 
